@@ -31,14 +31,14 @@ function replaceScriptsFromPackage(src, dest) {
 
   rmSync(tmp, { recursive: true, force: true });
 
-  if (!existsSync(dest) && existsSync(backup)) {
-    renameSync(backup, dest);
-  }
-
-  if (existsSync(backup) && existsSync(dest)) {
-    throw new Error(
-      `${basename(backup)} and scripts/ both exist. Remove or merge the backup from a failed upgrade, then retry.`,
-    );
+  if (existsSync(backup)) {
+    if (!existsSync(dest)) {
+      renameSync(backup, dest);
+    } else {
+      throw new Error(
+        `${basename(backup)} and scripts/ both exist. Remove or merge the backup, then retry.`,
+      );
+    }
   }
 
   cpSync(src, tmp, { recursive: true });
