@@ -1,6 +1,6 @@
 {
   "name": "aiworkspace",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Set up and manage AI agent skills and configs for Cursor, Claude Code, Codex and more across multi-repo workspaces",
   "license": "Apache-2.0",
   "type": "module",
