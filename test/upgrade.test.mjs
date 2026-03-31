@@ -88,13 +88,19 @@ describe("upgrade (npm path)", () => {
     assert.ok(!existsSync(`${join(ws, "scripts")}.upgrade-backup`), "backup dir should be removed after success");
   });
 
-  it("stages scripts/ after npm copy in a git repo", () => {
+  it("stages scripts/, package.json, and package-lock.json in a git repo", () => {
     const { ws, binDir } = makeConsumer({ gitInit: true });
 
     writeFileSync(
       join(ws, "node_modules", "aiworkspace", "scripts", "postinstall.mjs"),
       "// upgraded\n",
     );
+    // Simulate npm update having touched package.json and created a lockfile
+    writeFileSync(
+      join(ws, "package.json"),
+      JSON.stringify({ name: "consumer-ws", private: true, devDependencies: { aiworkspace: "^0.1.3" } }) + "\n",
+    );
+    writeFileSync(join(ws, "package-lock.json"), "{}\n");
 
     const r = runUpgradeScript(ws, binDir);
     assert.equal(r.status, 0, r.stderr + r.stdout);
@@ -102,6 +108,8 @@ describe("upgrade (npm path)", () => {
 
     const diff = spawnSync("git", ["diff", "--cached", "--name-only"], { cwd: ws, encoding: "utf8" });
     assert.ok(diff.stdout.includes("scripts/postinstall.mjs"), "postinstall.mjs should be staged");
+    assert.ok(diff.stdout.includes("package.json"), "package.json should be staged");
+    assert.ok(diff.stdout.includes("package-lock.json"), "package-lock.json should be staged");
   });
 
   it("removes stale scripts not present in newer version", () => {

@@ -79,7 +79,7 @@ The skill also includes a final "obviously AI generated" audit pass and a second
 | 15 | **Inline-header lists** | "**Performance:** Performance improved" | Convert to prose |
 | 16 | **Title Case Headings** | "Strategic Negotiations And Partnerships" | "Strategic negotiations and partnerships" |
 | 17 | **Emojis** | "🚀 Launch Phase: 💡 Key Insight:" | Remove emojis |
-| 18 | **Curly quotes** | `said “the project”` | `said "the project"` |
+| 18 | **Curly quotes** | `said “the project”` | `said “the project”` |
 | 25 | **Hyphenated word pairs** | “cross-functional, data-driven, client-facing” | Drop hyphens on common word pairs |
 
 ### Communication Patterns

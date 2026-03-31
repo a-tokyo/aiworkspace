@@ -75,7 +75,9 @@ function upgradeViaNpm() {
 
   const isGit = existsSync(join(REPO_DIR, ".git"));
   if (isGit) {
-    try { execFileSync("git", ["add", "scripts/"], { cwd: REPO_DIR, stdio: "ignore" }); } catch { /* ignore */ }
+    const toStage = ["scripts/", "package.json"];
+    if (existsSync(join(REPO_DIR, "package-lock.json"))) toStage.push("package-lock.json");
+    try { execFileSync("git", ["add", ...toStage], { cwd: REPO_DIR, stdio: "ignore" }); } catch { /* ignore */ }
   }
   const ver = readVersion(join(REPO_DIR, "node_modules", "aiworkspace", "package.json"));
   const hint = isGit ? " Review with: git diff --cached" : "";
