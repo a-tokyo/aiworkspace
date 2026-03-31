@@ -115,11 +115,12 @@ writeFileSync(join(target, "local", ".gitkeep"), "");
 console.log(`  ${G}+${X} local/.gitkeep`);
 
 // package.json — derived from root, stripped of publish-only and dev-only fields
-const { name: _pkgName, bin: _bin, files: _files, license: _license, author: _author, repository: _repository, keywords: _keywords, devDependencies: _devDeps, ...basePkg } = rootPkg;
+const { name: _pkgName, description: _description, bin: _bin, files: _files, license: _license, author: _author, repository: _repository, keywords: _keywords, devDependencies: _devDeps, ...basePkg } = rootPkg;
 const { test: _testScript, lint: _lintScript, ...consumerScripts } = rootPkg.scripts;
 const consumerPkg = {
   name: name,
   private: true,
+  description: "Shared AI workspace — skills, configs, and automation for multi-repo development",
   ...basePkg,
   scripts: {
     ...consumerScripts,
