@@ -6,8 +6,9 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { makeTmpDir, runScript } from "./helpers.mjs";
 
-const INIT_SCRIPT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "bin", "aiworkspace.mjs");
-const ROOT_PKG = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8"));
+const PKG_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const INIT_SCRIPT = join(PKG_ROOT, "bin", "aiworkspace.mjs");
+const ROOT_PKG = JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8"));
 
 let tmp;
 afterEach(() => tmp?.cleanup());

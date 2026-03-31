@@ -12,9 +12,9 @@ describe("postinstall", () => {
   let tmp;
   afterEach(() => tmp?.cleanup());
 
-  it("exits 0 immediately when running from node_modules/aiworkspace (dependency install)", () => {
+  it("exits 0 immediately when running inside node_modules", () => {
     tmp = makeTmpDir();
-    const fakeNm = join(tmp.dir, "parent", "node_modules", "aiworkspace");
+    const fakeNm = join(tmp.dir, "project", "node_modules", "aiworkspace");
     mkdirSync(join(fakeNm, "scripts"), { recursive: true });
     cpSync(join(REAL, "scripts", "postinstall.mjs"), join(fakeNm, "scripts", "postinstall.mjs"));
     cpSync(join(REAL, "scripts", "lib.mjs"), join(fakeNm, "scripts", "lib.mjs"));

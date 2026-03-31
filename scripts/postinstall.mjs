@@ -7,14 +7,16 @@
  * Replaces inline shell script to work on Windows (cmd.exe) and Unix.
  */
 
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { REPO_DIR, ROOT_CONFIG } from "./lib.mjs";
 
-// Skip when installed as a dependency (e.g. devDependency in a consumer workspace).
-// REPO_DIR would be .../node_modules/aiworkspace — running setup there would be wrong.
-const normalizedRepo = REPO_DIR.replace(/\\/g, "/");
-if (normalizedRepo.split("/").includes("node_modules")) {
+// When installed as a devDependency, REPO_DIR is .../node_modules/aiworkspace — skip.
+// Check specifically for node_modules/aiworkspace to avoid false positives on
+// workspaces that happen to live under an unrelated node_modules path.
+const segments = REPO_DIR.split(sep);
+const nmIdx = segments.lastIndexOf("node_modules");
+if (nmIdx !== -1 && segments[nmIdx + 1] === "aiworkspace") {
   process.exit(0);
 }
 

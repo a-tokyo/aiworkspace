@@ -138,7 +138,7 @@ git push -u origin main
 
 ```bash
 npm run upgrade                # npm update aiworkspace + copy scripts/ (or git upstream fallback)
-git diff                       # review what changed
+git diff --cached              # review what changed (both paths stage scripts/)
 git commit -m "upgrade scripts from aiworkspace"
 ```
 
