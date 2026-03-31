@@ -45,6 +45,8 @@ describe("upgrade (npm path)", () => {
     if (gitInit) {
       const git = (...args) => execFileSync("git", args, { cwd: ws, stdio: "ignore" });
       git("init");
+      git("config", "user.email", "test@test.local");
+      git("config", "user.name", "Test");
       git("add", "-A");
       git("commit", "-m", "initial");
     }
