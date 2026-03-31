@@ -8,6 +8,8 @@ Manage shared AI agent skills, configs, and automation across multi-repo workspa
 </a>
 <a href="https://twitter.com/intent/follow?screen_name=ahmedtokyo"><img src="https://img.shields.io/twitter/follow/ahmedtokyo.svg?label=Follow%20@ahmedtokyo" alt="Follow @ahmedtokyo" /></a>
 
+</br>
+
 **The problem**: AI agents only see the repo they run in. An agent working in a frontend repo has no visibility into the backend, API contracts, or shared conventions -- so it assumes and hallucinates. On top of that, each developer configures AI tools differently, so skills, instructions, and rules drift between projects and team members.
 
 **The solution**: A single `workspace/` repo that acts as the canonical source. Running `npm install` mirrors configs to the parent root, symlinks skills for every AI tool, and installs git hooks to keep everything in sync.
