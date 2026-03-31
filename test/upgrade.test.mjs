@@ -111,13 +111,4 @@ describe("upgrade (npm path)", () => {
     assert.equal(r.status, 0, r.stderr + r.stdout);
     assert.ok(!r.stdout.includes("git diff"), `should not mention git diff, got: ${r.stdout}`);
   });
-
-  it("cleans up temp dirs after successful upgrade", () => {
-    const { ws, binDir } = makeConsumer();
-
-    const r = runUpgrade(ws, binDir);
-    assert.equal(r.status, 0, r.stderr + r.stdout);
-    assert.ok(!existsSync(join(ws, "scripts.upgrade-tmp")), "temp dir should be cleaned up");
-    assert.ok(!existsSync(join(ws, "scripts.upgrade-backup")), "backup dir should be cleaned up");
-  });
 });

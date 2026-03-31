@@ -10,7 +10,7 @@
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, rmSync } from "node:fs";
 
 const REPO_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(join(REPO_DIR, "package.json"), "utf8"));
@@ -18,28 +18,6 @@ const DEFAULT_UPSTREAM = "https://github.com/a-tokyo/aiworkspace.git";
 
 function readVersion(path) {
   try { return JSON.parse(readFileSync(path, "utf8")).version; } catch { return "?"; }
-}
-
-function replaceDir(src, dest) {
-  const tmp = dest + ".upgrade-tmp";
-  const backup = dest + ".upgrade-backup";
-  rmSync(tmp, { recursive: true, force: true });
-  rmSync(backup, { recursive: true, force: true });
-
-  cpSync(src, tmp, { recursive: true });
-
-  if (existsSync(dest)) renameSync(dest, backup);
-  try {
-    renameSync(tmp, dest);
-    rmSync(backup, { recursive: true, force: true });
-  } catch (err) {
-    // Swap failed — restore backup so the workspace isn't left without scripts/.
-    rmSync(dest, { recursive: true, force: true });
-    if (existsSync(backup)) {
-      try { renameSync(backup, dest); } catch { /* leave backup for manual recovery */ }
-    }
-    throw err;
-  }
 }
 
 function upgradeViaNpm() {
@@ -50,13 +28,13 @@ function upgradeViaNpm() {
 
   const src = join(REPO_DIR, "node_modules", "aiworkspace", "scripts");
   if (!existsSync(src)) {
-    throw new Error(
-      "npm update succeeded but node_modules/aiworkspace/scripts/ is missing.\n" +
-      "package-lock.json may have been modified. Run `npm install` and retry.",
-    );
+    console.warn("npm update succeeded but node_modules/aiworkspace/scripts/ is missing.");
+    return false;
   }
 
-  replaceDir(src, join(REPO_DIR, "scripts"));
+  const dest = join(REPO_DIR, "scripts");
+  rmSync(dest, { recursive: true, force: true });
+  cpSync(src, dest, { recursive: true });
 
   const isGit = existsSync(join(REPO_DIR, ".git"));
   if (isGit) {
