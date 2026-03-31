@@ -83,11 +83,9 @@ mkdirSync(target, { recursive: true });
 cpSync(join(PKG_ROOT, "scripts"), join(target, "scripts"), { recursive: true });
 console.log(`  ${G}+${X} scripts/`);
 
-// Root config (AGENTS.md, README.md, empty skills dir)
+// Root config (AGENTS.md, README.md, bundled skills)
+cpSync(join(PKG_ROOT, "root-config"), join(target, "root-config"), { recursive: true });
 mkdirSync(join(target, "root-config", ".agents", "skills"), { recursive: true });
-for (const f of ["README.md", "AGENTS.md"]) {
-  cpSync(join(PKG_ROOT, "root-config", f), join(target, "root-config", f));
-}
 writeFileSync(join(target, "root-config", "skills-lock.json"), JSON.stringify({ version: 1, skills: {} }, null, 2) + "\n");
 console.log(`  ${G}+${X} root-config/`);
 

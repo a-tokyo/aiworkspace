@@ -117,6 +117,16 @@ describe("aiworkspace init", () => {
     assert.deepEqual(lock.skills, {});
   });
 
+  it("includes bundled root-config skills", () => {
+    tmp = makeTmpDir();
+    runScript(INIT_SCRIPT, ["init", "--no-install"], { cwd: tmp.dir });
+
+    const ws = join(tmp.dir, "workspace");
+    const skillsDir = join(ws, "root-config", ".agents", "skills");
+    assert.ok(existsSync(join(skillsDir, "scaffold-skill", "SKILL.md")), "scaffold-skill should be included");
+    assert.ok(existsSync(join(skillsDir, "humanizer", "SKILL.md")), "humanizer should be included");
+  });
+
   it("rejects invalid names", () => {
     tmp = makeTmpDir();
     for (const bad of ["has space", ".dotstart", "node_modules", ".git"]) {
