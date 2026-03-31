@@ -72,8 +72,8 @@ function upgradeViaNpm() {
   const r = spawnSync("npm", ["update", "aiworkspace"], {
     cwd: REPO_DIR, stdio: "inherit", shell: process.platform === "win32",
   });
-  if (r.signal || r.status === null) {
-    throw new Error(`npm update was interrupted (signal: ${r.signal ?? "unknown"}).`);
+  if (r.signal) {
+    throw new Error(`npm update was interrupted (signal: ${r.signal}).`);
   }
   if (r.error || r.status !== 0) return false;
 
