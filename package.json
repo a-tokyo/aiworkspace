@@ -11,7 +11,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/a-tokyo/aiworkspace.git"
+    "url": "git+https://github.com/a-tokyo/aiworkspace.git"
   },
   "bin": {
     "aiworkspace": "bin/aiworkspace.mjs"
