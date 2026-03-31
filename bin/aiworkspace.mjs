@@ -11,7 +11,7 @@
 import { existsSync, mkdirSync, cpSync, writeFileSync, readFileSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 const PKG_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const rootPkg = JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8"));
@@ -115,15 +115,16 @@ writeFileSync(join(target, "local", ".gitkeep"), "");
 console.log(`  ${G}+${X} local/.gitkeep`);
 
 // package.json — derived from root, stripped of publish-only and dev-only fields
-const { name: _pkgName, bin: _bin, files: _files, license: _license, author: _author, repository: _repository, keywords: _keywords, devDependencies: _devDeps, ...basePkg } = rootPkg;
+const { name: _pkgName, description: _description, bin: _bin, files: _files, license: _license, author: _author, repository: _repository, keywords: _keywords, devDependencies: _devDeps, ...basePkg } = rootPkg;
 const { test: _testScript, lint: _lintScript, ...consumerScripts } = rootPkg.scripts;
 const consumerPkg = {
   name: name,
   private: true,
+  description: "Shared AI workspace — skills, configs, and automation for multi-repo development",
   ...basePkg,
   scripts: {
     ...consumerScripts,
-    upgrade: `git remote get-url upstream >/dev/null 2>&1 || git remote add upstream ${REPO_URL}; git fetch upstream && git checkout upstream/main -- scripts/ && echo 'Scripts updated. Review with: git diff --cached'`,
+    upgrade: "node scripts/upgrade.mjs",
   },
 };
 writeFileSync(join(target, "package.json"), JSON.stringify(consumerPkg, null, 2) + "\n");
@@ -150,7 +151,7 @@ for (const f of PATCHABLE_DOCS) {
 if (!skipInstall) {
   try {
     console.log(`\n${B}Installing dependencies...${X}\n`);
-    execSync("npm install", { cwd: target, stdio: "inherit" });
+    execFileSync("npm", ["install"], { cwd: target, stdio: "inherit", shell: process.platform === "win32" });
     console.log(`\n  ${G}+${X} dependencies installed`);
   } catch {
     console.warn(`  ${Y}!${X} npm install failed — run ${C}cd ${name} && npm install${X} manually`);
@@ -159,11 +160,12 @@ if (!skipInstall) {
 
 // Git init
 try {
-  execSync("git init", { cwd: target, stdio: "ignore" });
-  execSync(`git remote add upstream ${REPO_URL}`, { cwd: target, stdio: "ignore" });
-  execSync("git add -A", { cwd: target, stdio: "ignore" });
+  const gitOpts = { cwd: target, stdio: "ignore" };
+  execFileSync("git", ["init"], gitOpts);
+  execFileSync("git", ["remote", "add", "upstream", REPO_URL], gitOpts);
+  execFileSync("git", ["add", "-A"], gitOpts);
   try {
-    execSync('git commit -m "initial workspace setup"', { cwd: target, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "initial workspace setup"], gitOpts);
   } catch {
     console.warn(`  ${Y}!${X} git commit skipped (configure git user.name / user.email first)`);
   }

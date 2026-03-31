@@ -43,18 +43,19 @@ describe("aiworkspace init", () => {
     assert.equal(pkg.type, "module");
     assert.ok(pkg.engines?.node);
     assert.equal(pkg.scripts.test, undefined);
+    assert.equal(pkg.scripts.lint, undefined);
+    assert.equal(pkg.scripts.postinstall, "node scripts/postinstall.mjs");
     assert.ok(pkg.scripts.upgrade);
     assert.ok(pkg.scripts["skills:setup"]);
   });
 
-  it("upgrade script has self-healing upstream", () => {
+  it("upgrade script references node wrapper", () => {
     tmp = makeTmpDir();
     runScript(INIT_SCRIPT, ["init", "--no-install"], { cwd: tmp.dir });
 
     const pkg = JSON.parse(readFileSync(join(tmp.dir, "workspace", "package.json"), "utf8"));
-    assert.ok(pkg.scripts.upgrade.includes("git remote get-url upstream"));
-    assert.ok(pkg.scripts.upgrade.includes("git remote add upstream"));
-    assert.ok(pkg.scripts.upgrade.includes("git fetch upstream"));
+    assert.equal(pkg.scripts.upgrade, "node scripts/upgrade.mjs");
+    assert.ok(existsSync(join(tmp.dir, "workspace", "scripts", "upgrade.mjs")));
   });
 
   it("sets up git with upstream remote", () => {
