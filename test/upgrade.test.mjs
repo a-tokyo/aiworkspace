@@ -1,6 +1,6 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, mkdirSync, unlinkSync, writeFileSync, existsSync, chmodSync } from "node:fs";
+import { cpSync, mkdirSync, unlinkSync, writeFileSync, existsSync, chmodSync, readFileSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -79,7 +79,6 @@ describe("upgrade (npm path)", () => {
   it("stages scripts/ after npm copy in a git repo", () => {
     const { ws, binDir } = makeConsumer({ gitInit: true });
 
-    // Put a newer version in node_modules so there's an actual diff to stage.
     writeFileSync(
       join(ws, "node_modules", "aiworkspace", "scripts", "postinstall.mjs"),
       "// upgraded\n",
@@ -87,6 +86,7 @@ describe("upgrade (npm path)", () => {
 
     const r = runUpgrade(ws, binDir);
     assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.ok(r.stdout.includes("git diff --cached"), "should suggest git diff --cached in git repo");
 
     const diff = spawnSync("git", ["diff", "--cached", "--name-only"], { cwd: ws, encoding: "utf8" });
     assert.ok(diff.stdout.includes("scripts/postinstall.mjs"), "postinstall.mjs should be staged");
@@ -95,7 +95,6 @@ describe("upgrade (npm path)", () => {
   it("removes stale scripts not present in newer version", () => {
     const { ws, binDir } = makeConsumer();
 
-    // Add a stale file that doesn't exist in the "newer" node_modules copy.
     writeFileSync(join(ws, "scripts", "old-removed-script.mjs"), "// stale\n");
     assert.ok(existsSync(join(ws, "scripts", "old-removed-script.mjs")));
 
@@ -103,5 +102,22 @@ describe("upgrade (npm path)", () => {
     assert.equal(r.status, 0, r.stderr + r.stdout);
     assert.ok(!existsSync(join(ws, "scripts", "old-removed-script.mjs")), "stale script should be removed");
     assert.ok(existsSync(join(ws, "scripts", "lib.mjs")), "current scripts should still exist");
+  });
+
+  it("does not mention git diff when not a git repo", () => {
+    const { ws, binDir } = makeConsumer({ gitInit: false });
+
+    const r = runUpgrade(ws, binDir);
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.ok(!r.stdout.includes("git diff"), `should not mention git diff, got: ${r.stdout}`);
+  });
+
+  it("cleans up temp dirs after successful upgrade", () => {
+    const { ws, binDir } = makeConsumer();
+
+    const r = runUpgrade(ws, binDir);
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.ok(!existsSync(join(ws, "scripts.upgrade-tmp")), "temp dir should be cleaned up");
+    assert.ok(!existsSync(join(ws, "scripts.upgrade-backup")), "backup dir should be cleaned up");
   });
 });

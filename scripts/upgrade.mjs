@@ -20,6 +20,28 @@ function readVersion(path) {
   try { return JSON.parse(readFileSync(path, "utf8")).version; } catch { return "?"; }
 }
 
+function replaceDir(src, dest) {
+  const tmp = dest + ".upgrade-tmp";
+  const backup = dest + ".upgrade-backup";
+  rmSync(tmp, { recursive: true, force: true });
+  rmSync(backup, { recursive: true, force: true });
+
+  cpSync(src, tmp, { recursive: true });
+
+  if (existsSync(dest)) renameSync(dest, backup);
+  try {
+    renameSync(tmp, dest);
+    rmSync(backup, { recursive: true, force: true });
+  } catch (err) {
+    // Swap failed — restore backup so the workspace isn't left without scripts/.
+    rmSync(dest, { recursive: true, force: true });
+    if (existsSync(backup)) {
+      try { renameSync(backup, dest); } catch { /* leave backup for manual recovery */ }
+    }
+    throw err;
+  }
+}
+
 function upgradeViaNpm() {
   const r = spawnSync("npm", ["update", "aiworkspace"], {
     cwd: REPO_DIR, stdio: "inherit", shell: process.platform === "win32",
@@ -34,17 +56,15 @@ function upgradeViaNpm() {
     );
   }
 
-  // Copy to temp dir first, then swap — so a failed copy doesn't leave scripts/ empty.
-  const tmp = join(REPO_DIR, "scripts.upgrade-tmp");
-  rmSync(tmp, { recursive: true, force: true });
-  cpSync(src, tmp, { recursive: true });
-  const dest = join(REPO_DIR, "scripts");
-  rmSync(dest, { recursive: true, force: true });
-  renameSync(tmp, dest);
+  replaceDir(src, join(REPO_DIR, "scripts"));
 
-  try { execFileSync("git", ["add", "scripts/"], { cwd: REPO_DIR, stdio: "ignore" }); } catch { /* not a git repo */ }
+  const isGit = existsSync(join(REPO_DIR, ".git"));
+  if (isGit) {
+    try { execFileSync("git", ["add", "scripts/"], { cwd: REPO_DIR, stdio: "ignore" }); } catch { /* ignore */ }
+  }
   const ver = readVersion(join(REPO_DIR, "node_modules", "aiworkspace", "package.json"));
-  console.log(`Scripts updated from aiworkspace v${ver} (npm). Review with: git diff --cached`);
+  const hint = isGit ? " Review with: git diff --cached" : "";
+  console.log(`Scripts updated from aiworkspace v${ver} (npm).${hint}`);
   return true;
 }
 
