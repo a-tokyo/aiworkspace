@@ -10,11 +10,11 @@
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, renameSync, rmSync } from "node:fs";
 
 const REPO_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(join(REPO_DIR, "package.json"), "utf8"));
-const UPSTREAM_URL = pkg.repository?.url || "https://github.com/a-tokyo/aiworkspace.git";
+const DEFAULT_UPSTREAM = "https://github.com/a-tokyo/aiworkspace.git";
 
 function readVersion(path) {
   try { return JSON.parse(readFileSync(path, "utf8")).version; } catch { return "?"; }
@@ -27,12 +27,21 @@ function upgradeViaNpm() {
   if (r.error || r.status !== 0) return false;
 
   const src = join(REPO_DIR, "node_modules", "aiworkspace", "scripts");
-  if (!existsSync(src)) return false;
+  if (!existsSync(src)) {
+    throw new Error(
+      "npm update succeeded but node_modules/aiworkspace/scripts/ is missing.\n" +
+      "package-lock.json may have been modified. Run `npm install` and retry.",
+    );
+  }
 
+  // Copy to temp dir first, then swap — so a failed copy doesn't leave scripts/ empty.
+  const tmp = join(REPO_DIR, "scripts.upgrade-tmp");
+  rmSync(tmp, { recursive: true, force: true });
+  cpSync(src, tmp, { recursive: true });
   const dest = join(REPO_DIR, "scripts");
   rmSync(dest, { recursive: true, force: true });
-  cpSync(src, dest, { recursive: true });
-  // Stage so both npm and git paths leave changes in the index consistently.
+  renameSync(tmp, dest);
+
   try { execFileSync("git", ["add", "scripts/"], { cwd: REPO_DIR, stdio: "ignore" }); } catch { /* not a git repo */ }
   const ver = readVersion(join(REPO_DIR, "node_modules", "aiworkspace", "package.json"));
   console.log(`Scripts updated from aiworkspace v${ver} (npm). Review with: git diff --cached`);
@@ -45,7 +54,7 @@ function upgradeViaGit() {
   }
 
   try { git("remote", "get-url", "upstream"); } catch {
-    git("remote", "add", "upstream", UPSTREAM_URL);
+    git("remote", "add", "upstream", DEFAULT_UPSTREAM);
   }
 
   execFileSync("git", ["fetch", "upstream"], { cwd: REPO_DIR, stdio: "inherit" });
