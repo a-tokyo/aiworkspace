@@ -21,12 +21,12 @@ function git(...args) {
 }
 
 try {
-  git("remote", "get-url", "upstream");
-} catch {
-  git("remote", "add", "upstream", REPO_URL);
-}
+  try {
+    git("remote", "get-url", "upstream");
+  } catch {
+    git("remote", "add", "upstream", REPO_URL);
+  }
 
-try {
   execFileSync("git", ["fetch", "upstream"], { cwd: REPO_DIR, stdio: "inherit" });
   execFileSync("git", ["checkout", "upstream/main", "--", "scripts/"], { cwd: REPO_DIR, stdio: "inherit" });
   console.log("Scripts updated. Review with: git diff --cached");

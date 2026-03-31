@@ -7,12 +7,9 @@
  * Replaces inline shell script to work on Windows (cmd.exe) and Unix.
  */
 
-import { join, dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-
-const REPO_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const ROOT_CONFIG = join(REPO_DIR, "root-config");
+import { REPO_DIR, ROOT_CONFIG } from "./lib.mjs";
 
 function trySkillsInstall(cwd) {
   try {
@@ -24,6 +21,12 @@ function trySkillsInstall(cwd) {
   } catch { /* best-effort */ }
 }
 
+function exitOnFail(result, label) {
+  if (result.error) { console.error(`${label}: ${result.error.message}`); process.exit(1); }
+  if (result.status !== 0 && result.status !== null) process.exit(result.status);
+  if (result.status === null) { console.error(`${label}: killed by ${result.signal || "unknown"}`); process.exit(1); }
+}
+
 trySkillsInstall(REPO_DIR);
 trySkillsInstall(ROOT_CONFIG);
 
@@ -31,10 +34,10 @@ const setup = spawnSync("node", [join("scripts", "skills", "setup-skills.mjs"), 
   cwd: REPO_DIR,
   stdio: "inherit",
 });
-if (setup.status) process.exit(setup.status);
+exitOnFail(setup, "setup-skills.mjs");
 
 const hooks = spawnSync("node", [join("scripts", "install-hooks.mjs")], {
   cwd: REPO_DIR,
   stdio: "inherit",
 });
-if (hooks.status) process.exit(hooks.status);
+exitOnFail(hooks, "install-hooks.mjs");

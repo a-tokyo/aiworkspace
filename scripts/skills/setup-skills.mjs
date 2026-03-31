@@ -300,7 +300,7 @@ function warnLockMismatches() {
     const rel = relative(REPO_DIR, result.lockPath);
     if (result.isSymlink) {
       console.warn(`\n⚠ ${rel} is a symlink — this causes cross-contamination.`);
-      console.warn(`  Fix: delete ${result.lockPath}, then run: npx skills update`);
+      console.warn(`  Fix: delete ${rel}, then run: npx skills update`);
     }
     if (result.extra.length > 0) {
       console.warn(`\n⚠ ${rel} has entries with no matching skill directory:`);
