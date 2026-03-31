@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
 /**
+ * @managed by aiworkspace — https://github.com/a-tokyo/aiworkspace
+ * This file is overwritten by `npm run upgrade`. Edit with care.
+ *
  * remove-skill.mjs — Thin wrapper around `skills remove`.
  *
  * Extras over raw CLI:

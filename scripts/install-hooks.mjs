@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
 /**
+ * @managed by aiworkspace — https://github.com/a-tokyo/aiworkspace
+ * This file is overwritten by `npm run upgrade`. Edit with care.
+ *
  * install-hooks.mjs — Git hooks that auto-sync skills after pull/checkout.
  *
  * Installs post-merge and post-checkout hooks in this repo's .git/hooks/.

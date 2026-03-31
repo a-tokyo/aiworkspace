@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
 /**
+ * @managed by aiworkspace — https://github.com/a-tokyo/aiworkspace
+ * This file is overwritten by `npm run upgrade`. Edit with care.
+ *
  * setup-skills.mjs
  *
  * Mirrors workspace/root-config/ to the parent root and creates per-skill

@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
 /**
+ * @managed by aiworkspace — https://github.com/a-tokyo/aiworkspace
+ * This file is overwritten by `npm run upgrade`. Edit with care.
+ *
  * add-skill.mjs — Thin wrapper around `skills add`.
  *
  * Extras over raw CLI:

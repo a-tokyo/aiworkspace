@@ -1,4 +1,7 @@
 /**
+ * @managed by aiworkspace — https://github.com/a-tokyo/aiworkspace
+ * This file is overwritten by `npm run upgrade`. Edit with care.
+ *
  * Shared utilities for workspace scripts.
  */
 

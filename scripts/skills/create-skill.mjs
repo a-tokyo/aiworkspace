@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
 /**
+ * @managed by aiworkspace — https://github.com/a-tokyo/aiworkspace
+ * This file is overwritten by `npm run upgrade`. Edit with care.
+ *
  * create-skill.mjs — Create a new manual skill scaffold.
  *
  * Without --project: creates in root-config/.agents/skills/ (workspace-wide)
