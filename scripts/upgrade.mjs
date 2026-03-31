@@ -7,10 +7,10 @@
  * Otherwise: git fetch upstream + checkout scripts/ (backwards-compatible fallback).
  */
 
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, renameSync, rmSync } from "node:fs";
 
 const REPO_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(join(REPO_DIR, "package.json"), "utf8"));
@@ -18,6 +18,45 @@ const DEFAULT_UPSTREAM = "https://github.com/a-tokyo/aiworkspace.git";
 
 function readVersion(path) {
   try { return JSON.parse(readFileSync(path, "utf8")).version; } catch { return "?"; }
+}
+
+/**
+ * Copy package scripts into a temp dir, then swap into dest so we never leave
+ * scripts/ missing if the copy step fails. On swap failure, restore the prior
+ * scripts/ from backup when possible.
+ */
+function replaceScriptsFromPackage(src, dest) {
+  const tmp = `${dest}.upgrade-tmp`;
+  const backup = `${dest}.upgrade-backup`;
+
+  rmSync(tmp, { recursive: true, force: true });
+
+  if (!existsSync(dest) && existsSync(backup)) {
+    renameSync(backup, dest);
+  }
+
+  if (existsSync(backup) && existsSync(dest)) {
+    throw new Error(
+      `${basename(backup)} and scripts/ both exist. Remove or merge the backup from a failed upgrade, then retry.`,
+    );
+  }
+
+  cpSync(src, tmp, { recursive: true });
+
+  if (existsSync(dest)) {
+    renameSync(dest, backup);
+  }
+
+  try {
+    renameSync(tmp, dest);
+    rmSync(backup, { recursive: true, force: true });
+  } catch (err) {
+    rmSync(dest, { recursive: true, force: true });
+    if (existsSync(backup)) {
+      try { renameSync(backup, dest); } catch { /* leave backup for manual recovery */ }
+    }
+    throw err;
+  }
 }
 
 function upgradeViaNpm() {
@@ -32,9 +71,7 @@ function upgradeViaNpm() {
     return false;
   }
 
-  const dest = join(REPO_DIR, "scripts");
-  rmSync(dest, { recursive: true, force: true });
-  cpSync(src, dest, { recursive: true });
+  replaceScriptsFromPackage(src, join(REPO_DIR, "scripts"));
 
   const isGit = existsSync(join(REPO_DIR, ".git"));
   if (isGit) {
