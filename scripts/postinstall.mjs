@@ -11,6 +11,13 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { REPO_DIR, ROOT_CONFIG } from "./lib.mjs";
 
+// Skip when installed as a dependency (e.g. devDependency in a consumer workspace).
+// REPO_DIR would be .../node_modules/aiworkspace — running setup there would be wrong.
+const normalizedRepo = REPO_DIR.replace(/\\/g, "/");
+if (normalizedRepo.split("/").includes("node_modules")) {
+  process.exit(0);
+}
+
 function trySkillsInstall(cwd) {
   try {
     spawnSync("npx", ["skills", "experimental_install"], {

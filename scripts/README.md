@@ -21,7 +21,9 @@ These scripts are managed by [aiworkspace](https://github.com/a-tokyo/aiworkspac
 npm run upgrade
 ```
 
-This fetches the latest `scripts/` from upstream and stages the changes for review. Your docs, configs, skills, and `package.json` are not touched.
+If `aiworkspace` is listed in `devDependencies`, this runs `npm update aiworkspace` and copies `node_modules/aiworkspace/scripts/` into `scripts/`. That pins which published template version your scripts match (see `package-lock.json`).
+
+If there is no `aiworkspace` dependency (older workspaces), it falls back to `git fetch upstream` and checks out `scripts/` from `upstream/main`. Your `root-config/`, skills, and team-owned `package.json` fields stay yours; only `scripts/` is replaced.
 
 ## Customizing
 

@@ -137,12 +137,16 @@ git push -u origin main
 **Pulling template updates** (anyone on the team):
 
 ```bash
-npm run upgrade                # adds upstream if missing, fetches, updates scripts/
-git diff --cached              # review what changed
-git commit -m "upgrade scripts from upstream"
+npm run upgrade                # npm update aiworkspace + copy scripts/ (or git upstream fallback)
+git diff                       # review what changed
+git commit -m "upgrade scripts from aiworkspace"
 ```
 
-Only `scripts/` is updated. Your docs, `root-config/`, skills, and `package.json` are not touched.
+New workspaces include `aiworkspace` in `devDependencies` so `npm outdated` shows when a newer template is on npm. Your team's own `version` in `package.json` stays independent.
+
+Only `scripts/` is updated (and lockfile if npm changed the devDep). Your `root-config/`, skills, and the rest of `package.json` stay yours.
+
+If you have no `aiworkspace` devDependency (older layout), upgrade uses `git fetch upstream` and checks out `scripts/` from `upstream/main` instead.
 
 ## Troubleshooting
 
@@ -152,4 +156,4 @@ Only `scripts/` is updated. Your docs, `root-config/`, skills, and `package.json
 | Skills not showing up | `cd workspace && npm run skills:setup`, verify `ls root-config/.agents/skills/` |
 | MCP server red/error | Click server name in Cursor Settings -> MCP for details, restart Cursor |
 | `npm install` fails on postinstall | Run `node scripts/skills/setup-skills.mjs` manually to see errors |
-| `npm run upgrade` fails | Run `git remote -v` to check remotes. Add upstream: `git remote add upstream https://github.com/a-tokyo/aiworkspace.git` |
+| `npm run upgrade` fails | With `aiworkspace` in devDependencies: run `npm install` then retry. Without it: `git remote -v`, add upstream `https://github.com/a-tokyo/aiworkspace.git` |

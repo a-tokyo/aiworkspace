@@ -124,6 +124,9 @@ const consumerPkg = {
     ...consumerScripts,
     upgrade: "node scripts/upgrade.mjs",
   },
+  devDependencies: {
+    aiworkspace: `^${VERSION}`,
+  },
 };
 writeFileSync(join(target, "package.json"), JSON.stringify(consumerPkg, null, 2) + "\n");
 console.log(`  ${G}+${X} package.json`);
@@ -191,6 +194,6 @@ ${B}Next steps:${X}
 Then clone your project repos alongside ${name}/ and open the parent directory
 in Cursor (or your AI editor of choice).
 
-${D}Run ${C}npm run upgrade${D} anytime to pull the latest scripts from upstream.${X}
+${D}Run ${C}npm run upgrade${D} anytime to refresh scripts (npm devDep or git upstream).${X}
 ${D}See ${name}/setup.md for the full engineering setup guide.${X}
 `);

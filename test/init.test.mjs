@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import { makeTmpDir, runScript } from "./helpers.mjs";
 
 const INIT_SCRIPT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "bin", "aiworkspace.mjs");
+const ROOT_PKG = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8"));
 
 let tmp;
 afterEach(() => tmp?.cleanup());
@@ -47,6 +48,7 @@ describe("aiworkspace init", () => {
     assert.equal(pkg.scripts.postinstall, "node scripts/postinstall.mjs");
     assert.ok(pkg.scripts.upgrade);
     assert.ok(pkg.scripts["skills:setup"]);
+    assert.equal(pkg.devDependencies?.aiworkspace, `^${ROOT_PKG.version}`);
   });
 
   it("upgrade script references node wrapper", () => {
