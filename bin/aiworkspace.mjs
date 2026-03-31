@@ -147,6 +147,16 @@ for (const f of PATCHABLE_DOCS) {
   if (after !== before) writeFileSync(p, after);
 }
 
+// Git init (before npm install so postinstall can install hooks)
+try {
+  const gitOpts = { cwd: target, stdio: "ignore" };
+  execFileSync("git", ["init"], gitOpts);
+  execFileSync("git", ["remote", "add", "upstream", REPO_URL], gitOpts);
+  console.log(`  ${G}+${X} git repo initialized (upstream: ${D}${REPO_URL}${X})`);
+} catch {
+  console.warn(`  ${Y}!${X} git init skipped (git not available)`);
+}
+
 // npm install
 if (!skipInstall) {
   try {
@@ -158,20 +168,17 @@ if (!skipInstall) {
   }
 }
 
-// Git init
+// Initial commit (after npm install so lockfile and hooks are included)
 try {
   const gitOpts = { cwd: target, stdio: "ignore" };
-  execFileSync("git", ["init"], gitOpts);
-  execFileSync("git", ["remote", "add", "upstream", REPO_URL], gitOpts);
   execFileSync("git", ["add", "-A"], gitOpts);
   try {
     execFileSync("git", ["commit", "-m", "initial workspace setup"], gitOpts);
   } catch {
     console.warn(`  ${Y}!${X} git commit skipped (configure git user.name / user.email first)`);
   }
-  console.log(`  ${G}+${X} git repo initialized (upstream: ${D}${REPO_URL}${X})`);
 } catch {
-  console.warn(`  ${Y}!${X} git init skipped (git not available)`);
+  /* git not available — already warned above */
 }
 
 console.log(`
