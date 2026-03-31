@@ -14,7 +14,16 @@ import { cpSync, existsSync, readFileSync, renameSync, rmSync } from "node:fs";
 
 const REPO_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(join(REPO_DIR, "package.json"), "utf8"));
-const DEFAULT_UPSTREAM = "https://github.com/a-tokyo/aiworkspace.git";
+const DEFAULT_UPSTREAM = (() => {
+  try {
+    const ai = JSON.parse(
+      readFileSync(join(REPO_DIR, "node_modules", "aiworkspace", "package.json"), "utf8"),
+    );
+    const url = ai.repository?.url;
+    if (url) return url.replace(/^git\+/, "");
+  } catch { /* not installed — use hardcoded fallback */ }
+  return "https://github.com/a-tokyo/aiworkspace.git";
+})();
 
 function readVersion(path) {
   try { return JSON.parse(readFileSync(path, "utf8")).version; } catch { return "?"; }
