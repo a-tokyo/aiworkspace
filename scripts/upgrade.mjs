@@ -63,6 +63,9 @@ function upgradeViaNpm() {
   const r = spawnSync("npm", ["update", "aiworkspace"], {
     cwd: REPO_DIR, stdio: "inherit", shell: process.platform === "win32",
   });
+  if (r.signal || r.status === null) {
+    throw new Error(`npm update was interrupted (signal: ${r.signal ?? "unknown"}).`);
+  }
   if (r.error || r.status !== 0) return false;
 
   const src = join(REPO_DIR, "node_modules", "aiworkspace", "scripts");

@@ -131,6 +131,21 @@ describe("upgrade (npm path)", () => {
     assert.equal(r.status, 0, r.stderr + r.stdout);
     assert.ok(!r.stdout.includes("git diff"), `should not mention git diff, got: ${r.stdout}`);
   });
+
+  it("aborts when npm is interrupted by a signal", () => {
+    if (process.platform === "win32") return;
+    const { ws, binDir } = makeConsumer();
+    const npmSh = join(binDir, "npm");
+    writeFileSync(npmSh, "#!/bin/sh\nkill -TERM $$\n");
+    chmodSync(npmSh, 0o755);
+
+    const r = runUpgradeScript(ws, binDir);
+    assert.notEqual(r.status, 0, "should exit non-zero on signal");
+    assert.ok(
+      r.stderr.includes("interrupted"),
+      `expected interrupted error, got: ${r.stderr}`,
+    );
+  });
 });
 
 describe("upgrade (git path and npm fallback)", () => {
