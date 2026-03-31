@@ -35,10 +35,11 @@
     "skills:remove": "node scripts/skills/remove-skill.mjs",
     "skills:list": "cd root-config && skills list",
     "skills:find": "skills find",
-    "skills:update": "skills update; (cd root-config && skills update); node scripts/skills/setup-skills.mjs",
+    "skills:update": "skills update && cd root-config && skills update && cd .. && node scripts/skills/setup-skills.mjs",
     "skills:create": "node scripts/skills/create-skill.mjs",
-    "skills:check": "echo 'workspace:' && skills check; echo 'root-config:' && cd root-config && skills check",
-    "postinstall": "npx skills experimental_install 2>/dev/null || true; (cd root-config && npx skills experimental_install 2>/dev/null || true); node scripts/skills/setup-skills.mjs --ensure && node scripts/install-hooks.mjs"
+    "skills:check": "echo workspace: && skills check && echo root-config: && cd root-config && skills check",
+    "postinstall": "node scripts/postinstall.mjs",
+    "upgrade": "node scripts/upgrade.mjs"
   },
   "dependencies": {
     "skills": "^1.4.6"
