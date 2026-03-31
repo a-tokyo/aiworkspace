@@ -97,7 +97,7 @@ cpSync(join(PKG_ROOT, ".agents", "README.md"), join(target, ".agents", "README.m
 console.log(`  ${G}+${X} .agents/`);
 
 // Top-level docs
-for (const f of ["LICENSE", "README.md", "AGENTS.md", "setup.md", ".gitignore"]) {
+for (const f of ["README.md", "AGENTS.md", "setup.md", ".gitignore"]) {
   const src = join(PKG_ROOT, f);
   if (existsSync(src)) { cpSync(src, join(target, f)); console.log(`  ${G}+${X} ${f}`); }
 }
@@ -108,7 +108,7 @@ writeFileSync(join(target, "local", ".gitkeep"), "");
 console.log(`  ${G}+${X} local/.gitkeep`);
 
 // package.json — derived from root, stripped of publish-only and dev-only fields
-const { name: _pkgName, bin: _bin, files: _files, author: _author, repository: _repository, keywords: _keywords, devDependencies: _devDeps, ...basePkg } = rootPkg;
+const { name: _pkgName, bin: _bin, files: _files, license: _license, author: _author, repository: _repository, keywords: _keywords, devDependencies: _devDeps, ...basePkg } = rootPkg;
 const { test: _testScript, lint: _lintScript, ...consumerScripts } = rootPkg.scripts;
 const consumerPkg = {
   name: name,

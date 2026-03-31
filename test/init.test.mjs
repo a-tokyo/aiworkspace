@@ -23,7 +23,7 @@ describe("aiworkspace init", () => {
     assert.ok(existsSync(join(ws, "root-config", "AGENTS.md")));
     assert.ok(existsSync(join(ws, "root-config", ".agents", "skills")));
     assert.ok(existsSync(join(ws, ".agents", "skills")));
-    assert.ok(existsSync(join(ws, "LICENSE")));
+    assert.ok(!existsSync(join(ws, "LICENSE")));
     assert.ok(existsSync(join(ws, ".gitignore")));
     assert.ok(existsSync(join(ws, "package.json")));
     assert.ok(existsSync(join(ws, "local", ".gitkeep")));
@@ -37,6 +37,7 @@ describe("aiworkspace init", () => {
     assert.equal(pkg.private, true);
     assert.equal(pkg.bin, undefined);
     assert.equal(pkg.files, undefined);
+    assert.equal(pkg.license, undefined);
     assert.equal(pkg.author, undefined);
     assert.equal(pkg.repository, undefined);
     assert.equal(pkg.type, "module");
