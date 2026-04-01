@@ -282,6 +282,7 @@ function setup() {
   if (!isEnsure) console.log("\n🔗 Setting up AI agent environment...\n");
 
   cleanCliArtifacts(REPO_DIR);
+  cleanCliArtifacts(ROOT_CONFIG);
   mirrorRootConfig();
 
   const projects = getProjectsWithSkills();

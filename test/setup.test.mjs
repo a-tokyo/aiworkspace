@@ -1,6 +1,6 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, lstatSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, lstatSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { makeTmpDir, buildFakeWorkspace, runScript } from "./helpers.mjs";
@@ -116,6 +116,22 @@ describe("setup-skills", () => {
     assert.ok(!existsSync(join(tmp.dir, "my-app", ".cursor")));
     assert.ok(!existsSync(join(tmp.dir, "my-app", ".claude", "skills")));
     assert.ok(!existsSync(join(tmp.dir, "my-app", ".claude")));
+  });
+
+  it("cleans pre-existing bare skills/ inside root-config on setup", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const rcSkills = join(ws, "root-config", "skills");
+    mkdirSync(rcSkills, { recursive: true });
+    symlinkSync(
+      join("..", ".agents", "skills", "demo"),
+      join(rcSkills, "demo"),
+    );
+    assert.ok(existsSync(join(rcSkills, "demo")));
+
+    runScript(setupScript(ws), [], { cwd: ws });
+    assert.ok(!existsSync(rcSkills), "root-config/skills/ should be removed by setup");
+    assert.ok(existsSync(join(tmp.dir, "skills", "demo")), "workspace-root skills/ symlink should still exist");
   });
 
   it("warns when lock file has entries not matching disk", () => {
