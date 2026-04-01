@@ -1,6 +1,6 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, readFileSync, readlinkSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readlinkSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { makeTmpDir } from "./helpers.mjs";
 import {
@@ -232,6 +232,16 @@ describe("cleanCliArtifacts", () => {
     symlinkSync(join(tmp.dir, "target"), join(cs, "my-skill"));
     cleanCliArtifacts(tmp.dir);
     assert.equal(isSymlink(join(cs, "my-skill")), false);
+  });
+  it("removes symlinks in bare skills/ (OpenClaw)", () => {
+    tmp = makeTmpDir();
+    const bare = join(tmp.dir, "skills");
+    mkdirSync(bare, { recursive: true });
+    writeFileSync(join(tmp.dir, "target"), "x");
+    symlinkSync(join(tmp.dir, "target"), join(bare, "my-skill"));
+    cleanCliArtifacts(tmp.dir);
+    assert.equal(isSymlink(join(bare, "my-skill")), false);
+    assert.equal(existsSync(bare), false);
   });
   it("leaves real files intact", () => {
     tmp = makeTmpDir();

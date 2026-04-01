@@ -171,11 +171,12 @@ export function resolveSkillsBin() {
 }
 
 /**
- * Remove .cursor/skills/ and .claude/skills/ symlinks the skills CLI
- * creates inside a directory. We manage these ourselves via setup-skills.
+ * Remove symlinks the skills CLI creates inside a directory for each tool
+ * (.cursor/skills/, .claude/skills/, and bare skills/ for OpenClaw).
+ * We manage these ourselves via setup-skills.
  */
 export function cleanCliArtifacts(dir) {
-  for (const sub of [join(".cursor", "skills"), join(".claude", "skills")]) {
+  for (const sub of [join(".cursor", "skills"), join(".claude", "skills"), "skills"]) {
     const skillsDir = join(dir, sub);
     if (!existsSync(skillsDir)) continue;
     for (const name of readdirSync(skillsDir)) {
@@ -185,7 +186,7 @@ export function cleanCliArtifacts(dir) {
     try {
       if (readdirSync(skillsDir).filter(n => n !== ".DS_Store").length === 0) rmSync(skillsDir, { recursive: true });
       const parent = dirname(skillsDir);
-      if (existsSync(parent) && readdirSync(parent).filter(n => n !== ".DS_Store").length === 0) rmSync(parent, { recursive: true });
+      if (parent !== dir && existsSync(parent) && readdirSync(parent).filter(n => n !== ".DS_Store").length === 0) rmSync(parent, { recursive: true });
     } catch { /* ignore */ }
   }
 }
