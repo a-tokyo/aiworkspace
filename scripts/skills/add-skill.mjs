@@ -45,11 +45,15 @@ Examples:
   process.exit(1);
 }
 
-if (!isListOnly && args.length && (args[0].includes("/blob/") || args[0].includes("/raw/"))) {
+if (!isListOnly && args.length && /^https?:\/\//.test(args[0])) {
   const normalized = normalizeGitHubUrl(args[0]);
   if (normalized) {
-    args[0] = normalized;
-    console.warn(`Converted blob URL → ${args[0]}`);
+    args[0] = normalized.source;
+    // If the URL contained a skill name and --skill wasn't already passed, inject it
+    if (normalized.skill && !args.includes("--skill")) {
+      args.splice(1, 0, "--skill", normalized.skill);
+    }
+    console.warn(`Converted URL → ${args.filter(a => a !== "--yes").join(" ")}`);
   } else {
     console.error(`Unable to normalize URL: ${args[0]}\nPass a GitHub URL or owner/repo shorthand.`);
     process.exit(1);

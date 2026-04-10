@@ -169,25 +169,46 @@ describe("getSkillNames", () => {
 
 describe("normalizeGitHubUrl", () => {
   it("blob URL → owner/repo", () => {
-    assert.equal(
+    assert.deepEqual(
       normalizeGitHubUrl("https://github.com/acme/cool-skill/blob/main/SKILL.md"),
-      "acme/cool-skill",
+      { source: "acme/cool-skill", skill: null },
     );
   });
   it("raw URL → owner/repo", () => {
-    assert.equal(
+    assert.deepEqual(
       normalizeGitHubUrl("https://github.com/acme/repo/raw/main/SKILL.md"),
-      "acme/repo",
+      { source: "acme/repo", skill: null },
+    );
+  });
+  it("plain GitHub URL → owner/repo", () => {
+    assert.deepEqual(
+      normalizeGitHubUrl("https://github.com/owner/repo"),
+      { source: "owner/repo", skill: null },
     );
   });
   it("strips .git suffix", () => {
-    assert.equal(
+    assert.deepEqual(
       normalizeGitHubUrl("https://github.com/acme/repo.git/blob/main/x"),
-      "acme/repo",
+      { source: "acme/repo", skill: null },
+    );
+  });
+  it("skills.sh URL → owner/repo + skill name", () => {
+    assert.deepEqual(
+      normalizeGitHubUrl("https://skills.sh/owner/repo/skill-name"),
+      { source: "owner/repo", skill: "skill-name" },
+    );
+  });
+  it("skills.sh URL without skill name", () => {
+    assert.deepEqual(
+      normalizeGitHubUrl("https://skills.sh/owner/repo"),
+      { source: "owner/repo", skill: null },
     );
   });
   it("returns null for non-GitHub URL", () => {
     assert.equal(normalizeGitHubUrl("https://gitlab.com/acme/repo/blob/main/x"), null);
+  });
+  it("returns null for owner/repo shorthand (not a URL)", () => {
+    assert.equal(normalizeGitHubUrl("owner/repo"), null);
   });
 });
 

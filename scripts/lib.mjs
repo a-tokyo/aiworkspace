@@ -145,13 +145,31 @@ export function gitTrackedChildren(dir) {
 // ── URL normalization ────────────────────────────────────────────────────
 
 /**
- * Convert a GitHub blob/raw URL to owner/repo shorthand.
- * Returns null if the URL doesn't match the expected pattern.
+ * Normalize a GitHub or skills.sh URL to { source, skill? }.
+ *
+ * Supported inputs:
+ *   https://github.com/owner/repo
+ *   https://github.com/owner/repo/blob/main/skills/name/SKILL.md
+ *   https://skills.sh/owner/repo/skill-name
+ *   owner/repo  (no-op passthrough)
+ *
+ * Returns null if the URL doesn't match any known pattern.
  */
 export function normalizeGitHubUrl(url) {
-  const match = url.match(/github\.com\/([^/]+)\/([^/]+)/);
-  if (!match) return null;
-  return `${match[1]}/${match[2].replace(/\.git$/, "")}`;
+  // skills.sh URL → owner/repo + optional skill name
+  const skillsSh = url.match(/skills\.sh\/([^/]+)\/([^/]+)(?:\/([^/?#]+))?/);
+  if (skillsSh) {
+    const source = `${skillsSh[1]}/${skillsSh[2]}`;
+    return { source, skill: skillsSh[3] || null };
+  }
+
+  // Any github.com URL → owner/repo
+  const gh = url.match(/github\.com\/([^/]+)\/([^/]+)/);
+  if (gh) {
+    return { source: `${gh[1]}/${gh[2].replace(/\.git$/, "")}`, skill: null };
+  }
+
+  return null;
 }
 
 // ── Skills ──────────────────────────────────────────────────────────────
