@@ -95,17 +95,69 @@ cpSync(join(PKG_ROOT, ".agents", "README.md"), join(target, ".agents", "README.m
 console.log(`  ${G}+${X} .agents/`);
 
 // Top-level docs
-for (const f of ["README.md", "AGENTS.md", "setup.md", ".gitignore"]) {
+for (const f of ["AGENTS.md", "setup.md", ".gitignore"]) {
   const src = join(PKG_ROOT, f);
   if (existsSync(src)) { cpSync(src, join(target, f)); console.log(`  ${G}+${X} ${f}`); }
 }
 
-// Attribution footer in consumer README
-const readmePath = join(target, "README.md");
-if (existsSync(readmePath)) {
-  const readme = readFileSync(readmePath, "utf8");
-  writeFileSync(readmePath, readme.trimEnd() + "\n\n---\n\nBuilt with [aiworkspace](https://github.com/a-tokyo/aiworkspace)\n");
-}
+// Generate a workspace-specific README (no npm badges or package-level noise)
+const consumerReadme = `\
+# ${name}
+
+Shared AI workspace — skills, configs, and automation for multi-repo development.
+
+> Full docs: [aiworkspace README](https://github.com/a-tokyo/aiworkspace#readme)
+
+## Join This Workspace
+
+\`\`\`bash
+cd ~/dev/<your-org>
+git clone <your-teams-workspace-repo> ${name}
+cd ${name} && npm install
+\`\`\`
+
+\`npm install\` restores skills from the lockfile, mirrors configs to the parent root, creates skill symlinks, and installs git hooks.
+
+## How It Works
+
+\`\`\`
+~/dev/<your-org>/                       <- open this in Cursor / your editor
+├── ${name}/                            <- this repo
+│   ├── root-config/                    <- canonical source for root-level AI configs
+│   │   ├── AGENTS.md                   <- standing instructions for all AI tools
+│   │   ├── .agents/skills/             <- workspace-wide skills
+│   │   └── skills-lock.json            <- lockfile for workspace-wide skills
+│   ├── .agents/skills/                 <- workspace project-specific skills
+│   ├── scripts/                        <- automation (setup, hooks, skill wrappers)
+│   └── package.json
+├── <project-a>/
+├── <project-b>/
+└── ...
+\`\`\`
+
+## Skills
+
+\`\`\`bash
+npm run skills:add -- <source> [--project <repo>]      # add from registry
+npm run skills:remove -- [<skill>] [--project <repo>]  # remove
+npm run skills:list                                     # list installed
+npm run skills:find                                     # search skill registry
+npm run skills:update                                   # update all
+npm run skills:setup                                    # re-sync configs and symlinks
+\`\`\`
+
+## Upgrading
+
+\`\`\`bash
+npm run upgrade
+\`\`\`
+
+---
+
+Built with [aiworkspace](https://github.com/a-tokyo/aiworkspace)
+`;
+writeFileSync(join(target, "README.md"), consumerReadme);
+console.log(`  ${G}+${X} README.md`);
 
 // local/.gitkeep
 mkdirSync(join(target, "local"), { recursive: true });
@@ -133,7 +185,6 @@ console.log(`  ${G}+${X} package.json`);
 
 // Patch doc paths to use the chosen name (no-op when name === DEFAULT_NAME)
 const PATCHABLE_DOCS = [
-  "README.md",
   "AGENTS.md",
   "setup.md",
   join(".agents", "README.md"),
