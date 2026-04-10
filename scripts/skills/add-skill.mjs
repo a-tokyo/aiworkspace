@@ -48,7 +48,6 @@ Examples:
 if (!isListOnly && args.length && /^https?:\/\//.test(args[0])) {
   const normalized = normalizeGitHubUrl(args[0]);
   if (normalized) {
-    const orig = args[0];
     args[0] = normalized.source;
     // If the URL contained a skill name and --skill wasn't already passed, inject it
     if (normalized.skill && !args.includes("--skill")) {
