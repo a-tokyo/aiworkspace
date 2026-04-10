@@ -30,7 +30,6 @@ export const MIRROR_SKIP = new Set(["README.md", "skills-lock.json"]);
 // Each entry is relative to WORKSPACE. The setup script creates
 // <dir>/<skill-name> → canonical skill path.
 export const SKILL_LINK_DIRS = [
-  join(".cursor", "skills"),
   join(".claude", "skills"),
   "skills",
 ];
@@ -38,7 +37,6 @@ export const SKILL_LINK_DIRS = [
 // Per-project subdirectories that get skill symlinks.
 // relPrefix is relative from the subdir to the project's .agents/skills/.
 export const PROJECT_SKILL_SUBDIRS = [
-  { subdir: join(".cursor", "skills"), relPrefix: join("..", "..", ".agents", "skills") },
   { subdir: join(".claude", "skills"), relPrefix: join("..", "..", ".agents", "skills") },
 ];
 
