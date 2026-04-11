@@ -48,7 +48,7 @@ describe("setup-skills", () => {
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
     runScript(setupScript(ws), [], { cwd: ws });
 
-    for (const sub of [".cursor/skills/demo", ".claude/skills/demo", "skills/demo"]) {
+    for (const sub of [".claude/skills/demo", "skills/demo"]) {
       const p = join(tmp.dir, sub);
       assert.ok(existsSync(p), `missing ${sub}`);
       assert.ok(lstatSync(p).isSymbolicLink(), `not symlink: ${sub}`);
@@ -63,7 +63,7 @@ describe("setup-skills", () => {
     });
     runScript(setupScript(ws), [], { cwd: ws });
 
-    for (const sub of [".cursor/skills/app-skill", ".claude/skills/app-skill"]) {
+    for (const sub of [".claude/skills/app-skill"]) {
       const p = join(tmp.dir, "my-app", sub);
       assert.ok(existsSync(p), `missing project ${sub}`);
       assert.ok(lstatSync(p).isSymbolicLink(), `not symlink: project ${sub}`);
@@ -76,18 +76,18 @@ describe("setup-skills", () => {
     runScript(setupScript(ws), ["--ensure"], { cwd: ws });
     const { exitCode } = runScript(setupScript(ws), ["--ensure"], { cwd: ws });
     assert.equal(exitCode, 0);
-    assert.ok(existsSync(join(tmp.dir, ".cursor", "skills", "demo")));
+    assert.ok(existsSync(join(tmp.dir, ".claude", "skills", "demo")));
   });
 
   it("cleans stale symlinks after skill removal", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
     runScript(setupScript(ws), ["--ensure"], { cwd: ws });
-    assert.ok(existsSync(join(tmp.dir, ".cursor", "skills", "demo")));
+    assert.ok(existsSync(join(tmp.dir, ".claude", "skills", "demo")));
 
     rmSync(join(ws, "root-config", ".agents", "skills", "demo"), { recursive: true });
     runScript(setupScript(ws), ["--ensure"], { cwd: ws });
-    assert.ok(!existsSync(join(tmp.dir, ".cursor", "skills", "demo")));
+    assert.ok(!existsSync(join(tmp.dir, ".claude", "skills", "demo")));
   });
 
   it("--clean removes all mirrored files and symlinks", () => {
@@ -98,7 +98,7 @@ describe("setup-skills", () => {
 
     runScript(setupScript(ws), ["--clean"], { cwd: ws });
     assert.ok(!existsSync(join(tmp.dir, "AGENTS.md")));
-    assert.ok(!existsSync(join(tmp.dir, ".cursor", "skills", "demo")));
+    assert.ok(!existsSync(join(tmp.dir, ".claude", "skills", "demo")));
   });
 
   it("cleans empty parent dirs when project skills are removed", () => {
@@ -107,13 +107,11 @@ describe("setup-skills", () => {
       withProject: { name: "my-app", skill: "temp-skill" },
     });
     runScript(setupScript(ws), [], { cwd: ws });
-    assert.ok(existsSync(join(tmp.dir, "my-app", ".cursor", "skills", "temp-skill")));
+    assert.ok(existsSync(join(tmp.dir, "my-app", ".claude", "skills", "temp-skill")));
 
     rmSync(join(tmp.dir, "my-app", ".agents", "skills", "temp-skill"), { recursive: true });
     runScript(setupScript(ws), [], { cwd: ws });
 
-    assert.ok(!existsSync(join(tmp.dir, "my-app", ".cursor", "skills")));
-    assert.ok(!existsSync(join(tmp.dir, "my-app", ".cursor")));
     assert.ok(!existsSync(join(tmp.dir, "my-app", ".claude", "skills")));
     assert.ok(!existsSync(join(tmp.dir, "my-app", ".claude")));
   });

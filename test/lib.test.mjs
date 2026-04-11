@@ -245,7 +245,7 @@ describe("cleanLockEntry", () => {
 });
 
 describe("cleanCliArtifacts", () => {
-  it("removes symlinks in .cursor/skills and .claude/skills", () => {
+  it("removes symlinks in .claude/skills (and legacy .cursor/skills)", () => {
     tmp = makeTmpDir();
     const cs = join(tmp.dir, ".cursor", "skills");
     mkdirSync(cs, { recursive: true });

@@ -25,7 +25,7 @@ describe("skill lifecycle", () => {
     assert.equal(r.exitCode, 0);
 
     // Verify symlinks at parent root
-    for (const sub of [".cursor/skills/test-skill", ".claude/skills/test-skill", "skills/test-skill"]) {
+    for (const sub of [".claude/skills/test-skill", "skills/test-skill"]) {
       const p = join(tmp.dir, sub);
       assert.ok(existsSync(p), `missing ${sub}`);
       assert.ok(lstatSync(p).isSymbolicLink(), `not symlink: ${sub}`);
@@ -37,7 +37,7 @@ describe("skill lifecycle", () => {
     assert.equal(r.exitCode, 0);
 
     // Verify symlinks removed
-    for (const sub of [".cursor/skills/test-skill", ".claude/skills/test-skill", "skills/test-skill"]) {
+    for (const sub of [".claude/skills/test-skill", "skills/test-skill"]) {
       assert.ok(!existsSync(join(tmp.dir, sub)), `stale ${sub} not cleaned`);
     }
   });
@@ -60,13 +60,13 @@ describe("skill lifecycle", () => {
     assert.equal(r.exitCode, 0);
 
     // Project skill symlinks exist in project
-    assert.ok(existsSync(join(tmp.dir, "my-app", ".cursor", "skills", "proj-skill")));
+    assert.ok(existsSync(join(tmp.dir, "my-app", ".claude", "skills", "proj-skill")));
 
     // Project skill does NOT appear at parent root
-    assert.ok(!existsSync(join(tmp.dir, ".cursor", "skills", "proj-skill")));
+    assert.ok(!existsSync(join(tmp.dir, ".claude", "skills", "proj-skill")));
 
     // Workspace-wide skill does NOT appear in project
-    assert.ok(!existsSync(join(tmp.dir, "my-app", ".cursor", "skills", "ws-wide")));
+    assert.ok(!existsSync(join(tmp.dir, "my-app", ".claude", "skills", "ws-wide")));
   });
 
   it("--clean tears down everything", () => {
@@ -79,13 +79,13 @@ describe("skill lifecycle", () => {
     // Setup then clean
     runScript(setupScript(ws), [], { cwd: ws });
     assert.ok(existsSync(join(tmp.dir, "AGENTS.md")));
-    assert.ok(existsSync(join(tmp.dir, ".cursor", "skills", "demo")));
+    assert.ok(existsSync(join(tmp.dir, ".claude", "skills", "demo")));
 
     runScript(setupScript(ws), ["--clean"], { cwd: ws });
 
     // All mirrored items gone
     assert.ok(!existsSync(join(tmp.dir, "AGENTS.md")));
-    assert.ok(!existsSync(join(tmp.dir, ".cursor", "skills", "demo")));
-    assert.ok(!existsSync(join(tmp.dir, "my-app", ".cursor", "skills", "app-skill")));
+    assert.ok(!existsSync(join(tmp.dir, ".claude", "skills", "demo")));
+    assert.ok(!existsSync(join(tmp.dir, "my-app", ".claude", "skills", "app-skill")));
   });
 });

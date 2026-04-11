@@ -14,9 +14,9 @@
  *   L1 dirs   → create real dir at parent root, symlink each L2 item
  *
  * Per-skill symlinks:
- *   .cursor/skills/{name} → canonical  (Cursor)
  *   .claude/skills/{name} → canonical  (Claude Code)
  *   skills/{name}         → canonical  (OpenClaw)
+ *   (Cursor uses .agents/skills/ natively — no .cursor/ symlinks needed)
  *
  * Usage:
  *   node scripts/skills/setup-skills.mjs          # full setup
