@@ -70,6 +70,32 @@ describe("setup-skills", () => {
     }
   });
 
+  it("creates nested project skill symlinks at multiple levels", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "ws-skill" });
+    for (const [projPath, skillName] of [
+      ["website", "site-skill"],
+      ["website/backend", "api-skill"],
+      ["website/backend/service", "svc-skill"],
+    ]) {
+      const skillDir = join(tmp.dir, projPath, ".agents", "skills", skillName);
+      mkdirSync(skillDir, { recursive: true });
+      writeFileSync(join(skillDir, "SKILL.md"), `---\nname: ${skillName}\n---\n`);
+    }
+
+    runScript(setupScript(ws), [], { cwd: ws });
+
+    for (const [projPath, skillName] of [
+      ["website", "site-skill"],
+      ["website/backend", "api-skill"],
+      ["website/backend/service", "svc-skill"],
+    ]) {
+      const p = join(tmp.dir, projPath, ".claude", "skills", skillName);
+      assert.ok(existsSync(p), `missing nested project .claude/skills for ${projPath}`);
+      assert.ok(lstatSync(p).isSymbolicLink(), `not symlink: ${projPath}/.claude/skills/${skillName}`);
+    }
+  });
+
   it("is idempotent", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
@@ -99,6 +125,20 @@ describe("setup-skills", () => {
     runScript(setupScript(ws), ["--clean"], { cwd: ws });
     assert.ok(!existsSync(join(tmp.dir, "AGENTS.md")));
     assert.ok(!existsSync(join(tmp.dir, ".claude", "skills", "demo")));
+  });
+
+  it("--clean removes stale project links even after .agents/skills was removed", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, {
+      withProject: { name: "website/backend", skill: "api-skill" },
+    });
+    runScript(setupScript(ws), [], { cwd: ws });
+    assert.ok(existsSync(join(tmp.dir, "website", "backend", ".claude", "skills", "api-skill")));
+
+    rmSync(join(tmp.dir, "website", "backend", ".agents", "skills"), { recursive: true, force: true });
+    runScript(setupScript(ws), ["--clean"], { cwd: ws });
+
+    assert.ok(!existsSync(join(tmp.dir, "website", "backend", ".claude", "skills", "api-skill")));
   });
 
   it("cleans empty parent dirs when project skills are removed", () => {

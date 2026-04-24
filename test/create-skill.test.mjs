@@ -56,6 +56,18 @@ describe("create-skill", () => {
     assert.ok(existsSync(skillFile));
   });
 
+  it("--project with subdirectory routes to nested project dir", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, {
+      withProject: { name: "website/backend" },
+    });
+    const { exitCode } = runScript(createScript(ws), ["--name", "nested-skill", "--project", "website/backend", "--no-setup"], { cwd: ws });
+    assert.equal(exitCode, 0);
+
+    const skillFile = join(tmp.dir, "website", "backend", ".agents", "skills", "nested-skill", "SKILL.md");
+    assert.ok(existsSync(skillFile));
+  });
+
   it("refuses duplicate skill", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "existing" });

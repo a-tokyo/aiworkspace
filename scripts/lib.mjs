@@ -7,7 +7,7 @@
 import {
   existsSync, lstatSync, statSync, readdirSync, readlinkSync, symlinkSync,
   unlinkSync, mkdirSync, copyFileSync, cpSync, rmSync,
-  readFileSync, writeFileSync,
+  readFileSync, writeFileSync, realpathSync,
 } from "node:fs";
 import { join, resolve, relative, dirname, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -268,21 +268,34 @@ export function validateLockFile(dir) {
 
 /**
  * Validate and resolve a --project argument. Returns the absolute path
- * to the project directory. Exits on invalid input.
+ * to the project directory. Supports subdirectory paths (e.g. "website/backend").
+ * Exits on invalid input.
  */
 export function resolveProject(name) {
   if (!name) return null;
-  if (name.includes("/") || name.includes("\\") || name === "." || name === "..") {
-    console.error("Error: --project must be a single top-level directory name.");
+  const segments = name.replaceAll("\\", "/").split("/").filter(Boolean);
+  if (segments.length === 0) {
+    console.error("Error: --project must not be empty.");
     process.exit(1);
   }
-  const dir = resolve(WORKSPACE, name);
+  if (segments.some(s => s === "." || s === "..")) {
+    console.error("Error: --project must not contain '.' or '..' path segments.");
+    process.exit(1);
+  }
+  const dir = resolve(WORKSPACE, ...segments);
   if (!existsSync(dir) || !statSync(dir).isDirectory()) {
     console.error(`Project not found: ${name}`);
     process.exit(1);
   }
-  const real = resolve(dir);
-  const realWs = resolve(WORKSPACE);
+  let real;
+  let realWs;
+  try {
+    real = realpathSync(dir);
+    realWs = realpathSync(WORKSPACE);
+  } catch {
+    console.error(`Error: could not resolve real path for --project ${name}.`);
+    process.exit(1);
+  }
   const rel = relative(realWs, real);
   if (rel.startsWith("..") || isAbsolute(rel)) {
     console.error("Error: --project must refer to a directory within the workspace.");
