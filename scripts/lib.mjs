@@ -275,7 +275,11 @@ export function resolveProject(name) {
   if (!name) return null;
   // Normalize separators and split into segments
   const segments = name.replace(/\\/g, "/").split("/").filter(Boolean);
-  if (segments.length === 0 || segments.some(s => s === "." || s === "..")) {
+  if (segments.length === 0) {
+    console.error("Error: --project must not be empty.");
+    process.exit(1);
+  }
+  if (segments.some(s => s === "." || s === "..")) {
     console.error("Error: --project must not contain '.' or '..' path segments.");
     process.exit(1);
   }

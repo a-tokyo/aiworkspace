@@ -170,11 +170,13 @@ function getProjectsWithSkills() {
       if (name.startsWith(".") || PROJECT_WALK_SKIP_ALWAYS.has(name)) continue;
       if (depth === 0 && name === "skills") continue;
       const child = join(dir, name);
+      if (child === REPO_DIR) continue;
       if (!isRealDir(child)) continue;
       const fullName = prefix ? `${prefix}/${name}` : name;
       const skillsDir = join(child, ".agents", "skills");
       if (isRealDir(skillsDir)) {
         projects.push({ name: fullName, dir: child, skillsDir });
+        continue;
       }
       walk(child, fullName, depth + 1);
     }
@@ -264,30 +266,20 @@ function cleanSkillLinks() {
 }
 
 function cleanProjectSkillLinks() {
-  function walk(dir, depth) {
-    if (depth > PROJECT_WALK_MAX_DEPTH) return;
-    let entries;
-    try { entries = readdirSync(dir); } catch { return; }
-    for (const name of entries) {
-      if (name.startsWith(".") || PROJECT_WALK_SKIP_ALWAYS.has(name)) continue;
-      if (depth === 0 && name === "skills") continue;
-      const child = join(dir, name);
-      if (!isRealDir(child)) continue;
-      for (const { subdir } of PROJECT_SKILL_SUBDIRS) {
-        const skillDir = join(child, subdir);
-        if (!isRealDir(skillDir)) continue;
-        let skillEntries;
-        try { skillEntries = readdirSync(skillDir); } catch { continue; }
-        for (const sname of skillEntries) {
-          const p = join(skillDir, sname);
-          if (isSymlink(p)) { unlinkSync(p); console.log(`  ✗ Removed ${relative(WORKSPACE, p)}`); }
-        }
-        removeEmptyParents(skillDir);
+  const projects = getProjectsWithSkills();
+  for (const proj of projects) {
+    for (const { subdir } of PROJECT_SKILL_SUBDIRS) {
+      const skillDir = join(proj.dir, subdir);
+      if (!isRealDir(skillDir)) continue;
+      let skillEntries;
+      try { skillEntries = readdirSync(skillDir); } catch { continue; }
+      for (const sname of skillEntries) {
+        const p = join(skillDir, sname);
+        if (isSymlink(p)) { unlinkSync(p); console.log(`  ✗ Removed ${relative(WORKSPACE, p)}`); }
       }
-      walk(child, depth + 1);
+      removeEmptyParents(skillDir);
     }
   }
-  walk(WORKSPACE, 0);
 }
 
 function removeEmptyParents(dir) {
