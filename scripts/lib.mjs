@@ -9,7 +9,7 @@ import {
   unlinkSync, mkdirSync, copyFileSync, cpSync, rmSync,
   readFileSync, writeFileSync, realpathSync,
 } from "node:fs";
-import { join, resolve, relative, dirname, isAbsolute } from "node:path";
+import { join, resolve, relative, dirname, isAbsolute, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
 import { platform } from "node:os";
@@ -292,12 +292,13 @@ export function resolveProject(name) {
   try {
     real = realpathSync(dir);
     realWs = realpathSync(WORKSPACE);
-  } catch {
-    console.error(`Error: could not resolve real path for --project ${name}.`);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error(`Error: could not resolve real path for --project ${name} (${dir}): ${detail}`);
     process.exit(1);
   }
   const rel = relative(realWs, real);
-  if (rel.startsWith("..") || isAbsolute(rel)) {
+  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
     console.error("Error: --project must refer to a directory within the workspace.");
     process.exit(1);
   }

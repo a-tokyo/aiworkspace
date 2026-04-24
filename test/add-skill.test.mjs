@@ -118,6 +118,18 @@ describe("add-skill", () => {
     assert.ok(stderr.includes("must refer to a directory within the workspace"));
   });
 
+  it("allows in-workspace project names starting with '..'", () => {
+    tmp = makeTmpDir();
+    const { ws, mockLog } = buildFakeWorkspace(tmp.dir, {
+      withMock: true,
+      withProject: { name: "..foo" },
+    });
+    runScript(addScript(ws), ["owner/repo", "--project", "..foo", "--no-setup"], { cwd: ws });
+
+    const calls = readMockLog(mockLog);
+    assert.ok(calls[0].cwd.endsWith("..foo"));
+  });
+
   it("normalizes blob URL to owner/repo", () => {
     tmp = makeTmpDir();
     const { ws, mockLog } = buildFakeWorkspace(tmp.dir, { withMock: true });
