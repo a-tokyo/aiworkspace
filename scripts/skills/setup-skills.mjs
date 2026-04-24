@@ -156,16 +156,28 @@ function linkWorkspaceSkills(projects) {
   return { count, locations };
 }
 
+const PROJECT_WALK_SKIP = new Set(["node_modules", "skills", ".git"]);
+const PROJECT_WALK_MAX_DEPTH = 5;
+
 function getProjectsWithSkills() {
   const projects = [];
-  for (const name of readdirSync(WORKSPACE)) {
-    if (name.startsWith(".") || name === "skills" || name === "node_modules") continue;
-    const dir = join(WORKSPACE, name);
-    const skillsDir = join(dir, ".agents", "skills");
-    if (isRealDir(dir) && isRealDir(skillsDir)) {
-      projects.push({ name, dir, skillsDir });
+  function walk(dir, prefix, depth) {
+    if (depth > PROJECT_WALK_MAX_DEPTH) return;
+    let entries;
+    try { entries = readdirSync(dir); } catch { return; }
+    for (const name of entries) {
+      if (name.startsWith(".") || PROJECT_WALK_SKIP.has(name)) continue;
+      const child = join(dir, name);
+      if (!isRealDir(child)) continue;
+      const fullName = prefix ? `${prefix}/${name}` : name;
+      const skillsDir = join(child, ".agents", "skills");
+      if (isRealDir(skillsDir)) {
+        projects.push({ name: fullName, dir: child, skillsDir });
+      }
+      walk(child, fullName, depth + 1);
     }
   }
+  walk(WORKSPACE, "", 0);
   return projects;
 }
 
@@ -250,18 +262,27 @@ function cleanSkillLinks() {
 }
 
 function cleanProjectSkillLinks() {
-  for (const name of readdirSync(WORKSPACE)) {
-    if (name.startsWith(".") || name === "skills" || name === "node_modules") continue;
-    for (const { subdir } of PROJECT_SKILL_SUBDIRS) {
-      const dir = join(WORKSPACE, name, subdir);
-      if (!existsSync(dir)) continue;
-      for (const sname of readdirSync(dir)) {
-        const p = join(dir, sname);
-        if (isSymlink(p)) { unlinkSync(p); console.log(`  ✗ Removed ${relative(WORKSPACE, p)}`); }
+  function walk(dir, depth) {
+    if (depth > PROJECT_WALK_MAX_DEPTH) return;
+    let entries;
+    try { entries = readdirSync(dir); } catch { return; }
+    for (const name of entries) {
+      if (name.startsWith(".") || PROJECT_WALK_SKIP.has(name)) continue;
+      const child = join(dir, name);
+      if (!isRealDir(child)) continue;
+      for (const { subdir } of PROJECT_SKILL_SUBDIRS) {
+        const skillDir = join(child, subdir);
+        if (!existsSync(skillDir)) continue;
+        for (const sname of readdirSync(skillDir)) {
+          const p = join(skillDir, sname);
+          if (isSymlink(p)) { unlinkSync(p); console.log(`  ✗ Removed ${relative(WORKSPACE, p)}`); }
+        }
+        removeEmptyParents(skillDir);
       }
-      removeEmptyParents(dir);
+      walk(child, depth + 1);
     }
   }
+  walk(WORKSPACE, 0);
 }
 
 function removeEmptyParents(dir) {

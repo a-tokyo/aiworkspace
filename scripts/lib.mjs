@@ -268,15 +268,18 @@ export function validateLockFile(dir) {
 
 /**
  * Validate and resolve a --project argument. Returns the absolute path
- * to the project directory. Exits on invalid input.
+ * to the project directory. Supports subdirectory paths (e.g. "website/backend").
+ * Exits on invalid input.
  */
 export function resolveProject(name) {
   if (!name) return null;
-  if (name.includes("/") || name.includes("\\") || name === "." || name === "..") {
-    console.error("Error: --project must be a single top-level directory name.");
+  // Normalize separators and split into segments
+  const segments = name.replace(/\\/g, "/").split("/").filter(Boolean);
+  if (segments.length === 0 || segments.some(s => s === "." || s === "..")) {
+    console.error("Error: --project must not contain '.' or '..' path segments.");
     process.exit(1);
   }
-  const dir = resolve(WORKSPACE, name);
+  const dir = resolve(WORKSPACE, ...segments);
   if (!existsSync(dir) || !statSync(dir).isDirectory()) {
     console.error(`Project not found: ${name}`);
     process.exit(1);

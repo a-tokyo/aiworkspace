@@ -79,6 +79,18 @@ describe("add-skill", () => {
     assert.ok(calls[0].cwd.endsWith("root-config"));
   });
 
+  it("routes --project with subdirectory to correct cwd", () => {
+    tmp = makeTmpDir();
+    const { ws, mockLog } = buildFakeWorkspace(tmp.dir, {
+      withMock: true,
+      withProject: { name: "website/backend" },
+    });
+    runScript(addScript(ws), ["owner/repo", "--project", "website/backend", "--no-setup"], { cwd: ws });
+
+    const calls = readMockLog(mockLog);
+    assert.ok(calls[0].cwd.endsWith(join("website", "backend")));
+  });
+
   it("normalizes blob URL to owner/repo", () => {
     tmp = makeTmpDir();
     const { ws, mockLog } = buildFakeWorkspace(tmp.dir, { withMock: true });

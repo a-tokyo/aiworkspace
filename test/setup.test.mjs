@@ -70,6 +70,21 @@ describe("setup-skills", () => {
     }
   });
 
+  it("creates nested project skill symlinks", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, {
+      withSkill: "ws-skill",
+      withProject: { name: "website/backend", skill: "api-skill" },
+    });
+    runScript(setupScript(ws), [], { cwd: ws });
+
+    for (const sub of [".claude/skills/api-skill"]) {
+      const p = join(tmp.dir, "website", "backend", sub);
+      assert.ok(existsSync(p), `missing nested project ${sub}`);
+      assert.ok(lstatSync(p).isSymbolicLink(), `not symlink: nested project ${sub}`);
+    }
+  });
+
   it("is idempotent", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
