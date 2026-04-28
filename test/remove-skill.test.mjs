@@ -50,6 +50,18 @@ describe("remove-skill", () => {
     assert.ok(calls[0].cwd.endsWith("root-config"));
   });
 
+  it("routes --project with subdirectory to correct cwd", () => {
+    tmp = makeTmpDir();
+    const { ws, mockLog } = buildFakeWorkspace(tmp.dir, {
+      withMock: true,
+      withProject: { name: "website/backend" },
+    });
+    runScript(removeScript(ws), ["some-skill", "--project", "website/backend", "--no-setup"], { cwd: ws });
+
+    const calls = readMockLog(mockLog);
+    assert.ok(calls[0].cwd.endsWith(join("website", "backend")));
+  });
+
   it("auto-injects --yes when skill name is provided", () => {
     tmp = makeTmpDir();
     const { ws, mockLog } = buildFakeWorkspace(tmp.dir, { withMock: true });
