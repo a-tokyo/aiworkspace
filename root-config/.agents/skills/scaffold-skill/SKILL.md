@@ -49,7 +49,7 @@ Max 64 chars. Must start and end with a letter or number.
 skill-authoring guide for quality content and proper requirements gathering.
 
 1. Search your available skills for one named `create-skill`. Common locations:
-   - Cursor: `~/.agents/skills/create-skill/SKILL.md`
+   - Cursor: `~/.cursor/skills/create-skill/SKILL.md`
    - Claude Code: `~/.claude/skills/create-skill/SKILL.md`
    - Or check your available skills list for any skill with "create-skill" in
      the name or "skill" + "create" in the description.
