@@ -5,7 +5,7 @@ Single canonical source for AI tool configurations at the parent workspace root 
 `npm install` in `workspace/` mirrors this directory to the parent root:
 
 - **Files** (AGENTS.md, CLAUDE.md) are **copied** (protects canonical from tool writes)
-- **Directories** (.claude/, .agents/) are **created** at root with contents **symlinked** back
+- **Directories** (.cursor/, .claude/, .agents/) are **created** at root with contents **symlinked** back
 
 `README.md` and `skills-lock.json` are not mirrored.
 
@@ -35,6 +35,14 @@ Add files and directories as needed — the mirror picks them up automatically.
 |------|---------|
 | `.agents/skills/<name>/SKILL.md` | Shared skills, available to all repos via symlinks |
 
+### `.cursor/` (Cursor IDE)
+
+| Path | Purpose |
+|------|---------|
+| `.cursor/rules/<name>.md` | Persistent rules across all repos |
+| `.cursor/plans/<name>.md` | Saved workspace-level plans |
+| `.cursor/agents/<name>.md` | Custom Cursor agents |
+
 ### `.claude/` (Claude Code)
 
 | Path | Purpose |
@@ -55,10 +63,8 @@ Add files and directories as needed — the mirror picks them up automatically.
 ## Adding a New Config
 
 ```bash
-mkdir -p root-config/.agents/skills
-# or add a Claude rule:
-mkdir -p root-config/.claude/rules
-echo "# My Rule" > root-config/.claude/rules/code-style.md
+mkdir -p root-config/.cursor/rules
+echo "# My Rule" > root-config/.cursor/rules/code-style.md
 npm run skills:setup
 ```
 
