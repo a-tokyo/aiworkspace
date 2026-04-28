@@ -188,11 +188,11 @@ export function resolveSkillsBin() {
 
 /**
  * Remove symlinks the skills CLI creates inside a directory for each tool
- * (.cursor/skills/, .claude/skills/, and bare skills/ for OpenClaw).
+ * (.claude/skills/ and bare skills/ for OpenClaw).
  * We manage these ourselves via setup-skills.
  */
 export function cleanCliArtifacts(dir) {
-  for (const sub of [join(".cursor", "skills"), join(".claude", "skills"), "skills"]) {
+  for (const sub of [join(".claude", "skills"), "skills"]) {
     const skillsDir = join(dir, sub);
     if (!existsSync(skillsDir)) continue;
     for (const name of readdirSync(skillsDir)) {

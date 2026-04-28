@@ -18,7 +18,7 @@ Everything follows **nearest-wins**: the closer a file is to the code you're cha
 |------|------------------------|----------------------|
 | Instructions | This file (`AGENTS.md` at root) | `<project>/AGENTS.md` |
 | Skills | `.agents/skills/` | `<project>/.agents/skills/` |
-| Rules | `.cursor/rules/` | `<project>/.cursor/rules/` |
+| Rules | `.agents/rules/` | `<project>/.agents/rules/` |
 | Docs | `docs/` repo (sibling) | `<project>/docs/` |
 
 When guidance conflicts, the closest file to the code wins.

@@ -20,7 +20,7 @@ workspace/.agents/skills/                ← workspace project-specific skills (
 Parent root (auto-created by setup-skills.mjs):
   .claude/skills/{name}  → workspace-wide skill symlinks  (Claude Code)
   skills/{name}          → workspace-wide skill symlinks  (OpenClaw)
-  (Cursor reads .agents/skills/ natively — no .cursor/ symlinks needed)
+  (Cursor reads .agents/skills/ natively)
 
 Per-project (including workspace/):
   <project>/.claude/skills/{name}  → project skill symlinks
