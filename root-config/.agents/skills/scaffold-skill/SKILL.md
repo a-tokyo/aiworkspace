@@ -19,7 +19,7 @@ directory placement, and symlinking to all AI tool directories.
 Ask the user if unclear.
 
 - **Workspace-wide**: stored in `root-config/.agents/skills/`, symlinked to the
-  workspace root so all projects and AI tools (`.cursor/skills/`, `.claude/skills/`,
+  workspace root so all projects and AI tools (`.agents/skills/`, `.claude/skills/`,
   `skills/`) can discover it.
 - **Project-specific**: stored in `<repo>/.agents/skills/`, symlinked into that
   project's AI tool directories only.
@@ -37,7 +37,7 @@ npm run skills:create -- --name <skill-name> --project <repo>
 ```
 
 This validates the name, creates the directory with a template `SKILL.md`, and
-runs setup to symlink the skill into `.cursor/skills/`, `.claude/skills/`, and
+runs setup to symlink the skill into `.claude/skills/` and
 `skills/` so every AI tool can discover it.
 
 **Naming rules**: lowercase letters, numbers, hyphens, underscores, and dots.
@@ -49,8 +49,8 @@ Max 64 chars. Must start and end with a letter or number.
 skill-authoring guide for quality content and proper requirements gathering.
 
 1. Search your available skills for one named `create-skill`. Common locations:
-   - Cursor: `~/.cursor/skills-cursor/create-skill/SKILL.md`
-   - Claude Code: `~/.claude/skills-cursor/create-skill/SKILL.md`
+   - Cursor: `~/.cursor/skills/create-skill/SKILL.md`
+   - Claude Code: `~/.claude/skills/create-skill/SKILL.md`
    - Or check your available skills list for any skill with "create-skill" in
      the name or "skill" + "create" in the description.
 

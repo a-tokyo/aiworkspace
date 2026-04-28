@@ -1,10 +1,4 @@
 {
   "version": 1,
-  "skills": {
-    "humanizer": {
-      "source": "blader/humanizer",
-      "sourceType": "github",
-      "computedHash": "c03da5ce68828393461eff0c81a2a81535342daee0c6ca292910395065218433"
-    }
-  }
+  "skills": {}
 }

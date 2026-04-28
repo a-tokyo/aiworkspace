@@ -6,7 +6,7 @@ Shared AI agent skills and documentation for the workspace.
 
 ```
 workspace/root-config/.agents/skills/    ← workspace-wide skills (git-tracked)
-  ├── humanizer/SKILL.md                    shared with ALL projects
+  ├── scaffold-skill/SKILL.md                shared with ALL projects
   └── ...
 
 workspace/.agents/skills/                ← workspace project-specific skills (git-tracked)
@@ -20,7 +20,7 @@ workspace/.agents/skills/                ← workspace project-specific skills (
 Parent root (auto-created by setup-skills.mjs):
   .claude/skills/{name}  → workspace-wide skill symlinks  (Claude Code)
   skills/{name}          → workspace-wide skill symlinks  (OpenClaw)
-  (Cursor reads .agents/skills/ natively — no .cursor/ symlinks needed)
+  (Cursor reads .agents/skills/ natively)
 
 Per-project (including workspace/):
   <project>/.claude/skills/{name}  → project skill symlinks

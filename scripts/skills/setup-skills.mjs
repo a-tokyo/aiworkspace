@@ -16,7 +16,7 @@
  * Per-skill symlinks:
  *   .claude/skills/{name} → canonical  (Claude Code)
  *   skills/{name}         → canonical  (OpenClaw)
- *   (Cursor uses .agents/skills/ natively — no .cursor/ symlinks needed)
+ *   (Cursor uses .agents/skills/ natively)
  *
  * Usage:
  *   node scripts/skills/setup-skills.mjs          # full setup

@@ -245,9 +245,18 @@ describe("cleanLockEntry", () => {
 });
 
 describe("cleanCliArtifacts", () => {
-  it("removes symlinks in .claude/skills (and legacy .cursor/skills)", () => {
+  it("removes symlinks in .cursor/skills", () => {
     tmp = makeTmpDir();
     const cs = join(tmp.dir, ".cursor", "skills");
+    mkdirSync(cs, { recursive: true });
+    writeFileSync(join(tmp.dir, "target"), "x");
+    symlinkSync(join(tmp.dir, "target"), join(cs, "my-skill"));
+    cleanCliArtifacts(tmp.dir);
+    assert.equal(isSymlink(join(cs, "my-skill")), false);
+  });
+  it("removes symlinks in .claude/skills", () => {
+    tmp = makeTmpDir();
+    const cs = join(tmp.dir, ".claude", "skills");
     mkdirSync(cs, { recursive: true });
     writeFileSync(join(tmp.dir, "target"), "x");
     symlinkSync(join(tmp.dir, "target"), join(cs, "my-skill"));
@@ -266,7 +275,7 @@ describe("cleanCliArtifacts", () => {
   });
   it("leaves real files intact", () => {
     tmp = makeTmpDir();
-    const cs = join(tmp.dir, ".cursor", "skills");
+    const cs = join(tmp.dir, ".claude", "skills");
     mkdirSync(cs, { recursive: true });
     writeFileSync(join(cs, "real-file"), "keep");
     cleanCliArtifacts(tmp.dir);
