@@ -15,7 +15,7 @@
  *
  * Usage:
  *   npm run skills:remove                              # interactive (workspace-wide)
- *   npm run skills:remove -- humanizer                  # by name (workspace-wide)
+ *   npm run skills:remove -- some-skill                  # by name (workspace-wide)
  *   npm run skills:remove -- some-skill --project my-app
  *   npm run skills:remove -- some-skill --project workspace
  */

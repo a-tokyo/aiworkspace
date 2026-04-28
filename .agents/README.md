@@ -6,7 +6,7 @@ Shared AI agent skills and documentation for the workspace.
 
 ```
 workspace/root-config/.agents/skills/    ← workspace-wide skills (git-tracked)
-  ├── humanizer/SKILL.md                    shared with ALL projects
+  ├── scaffold-skill/SKILL.md                shared with ALL projects
   └── ...
 
 workspace/.agents/skills/                ← workspace project-specific skills (git-tracked)
