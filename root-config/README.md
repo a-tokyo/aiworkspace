@@ -4,7 +4,8 @@ Single canonical source for AI tool configurations at the parent workspace root 
 
 `npm install` in `workspace/` mirrors this directory to the parent root:
 
-- **Files** (AGENTS.md, CLAUDE.md) are **copied** (protects canonical from tool writes)
+- **Files** (AGENTS.md) are **copied** (protects canonical from tool writes)
+- **Symlinks** (CLAUDE.md → AGENTS.md) are **recreated** at parent root
 - **Directories** (.cursor/, .claude/, .agents/) are **created** at root with contents **symlinked** back
 
 `README.md` and `skills-lock.json` are not mirrored.
@@ -14,6 +15,7 @@ Single canonical source for AI tool configurations at the parent workspace root 
 ```
 root-config/
 ├── AGENTS.md           # Standing instructions for all AI tools
+├── CLAUDE.md           # Symlink to AGENTS.md (Claude Code entry point)
 └── .agents/
     └── skills/         # Shared AI agent skills (workspace-wide)
 ```
@@ -27,7 +29,12 @@ Add files and directories as needed — the mirror picks them up automatically.
 | File | Purpose |
 |------|---------|
 | `AGENTS.md` | Standing instructions for AI tools |
-| `CLAUDE.md` | Instructions for Claude Code specifically |
+
+### Symlinks (recreated at root)
+
+| File | Purpose |
+|------|---------|
+| `CLAUDE.md` | Symlink to `AGENTS.md` — Claude Code entry point |
 
 ### `.agents/skills/`
 

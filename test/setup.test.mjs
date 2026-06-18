@@ -1,6 +1,6 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync, lstatSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, lstatSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { makeTmpDir, buildFakeWorkspace, runScript } from "./helpers.mjs";
@@ -20,6 +20,19 @@ describe("setup-skills", () => {
     const dest = join(tmp.dir, "AGENTS.md");
     assert.ok(existsSync(dest));
     assert.equal(readFileSync(dest, "utf8"), "# Test AGENTS\n");
+  });
+
+  it("mirrors CLAUDE.md symlink to parent root", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    runScript(setupScript(ws), ["--ensure"], { cwd: ws });
+
+    const claude = join(tmp.dir, "CLAUDE.md");
+    const agents = join(tmp.dir, "AGENTS.md");
+    assert.ok(existsSync(claude));
+    assert.ok(lstatSync(claude).isSymbolicLink(), "CLAUDE.md should be a symlink");
+    assert.equal(readlinkSync(claude), "AGENTS.md");
+    assert.equal(readFileSync(claude, "utf8"), readFileSync(agents, "utf8"));
   });
 
   it("does NOT mirror README.md or skills-lock.json", () => {
@@ -68,6 +81,20 @@ describe("setup-skills", () => {
       assert.ok(existsSync(p), `missing project ${sub}`);
       assert.ok(lstatSync(p).isSymbolicLink(), `not symlink: project ${sub}`);
     }
+  });
+
+  it("recreates workspace repo .claude/skills after cleanCliArtifacts", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir);
+    const skillDir = join(ws, ".agents", "skills", "repo-skill");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, "SKILL.md"), "---\nname: repo-skill\n---\n");
+
+    runScript(setupScript(ws), [], { cwd: ws });
+
+    const link = join(ws, ".claude", "skills", "repo-skill");
+    assert.ok(existsSync(link), "missing workspace repo .claude/skills/repo-skill");
+    assert.ok(lstatSync(link).isSymbolicLink(), "workspace repo skill link should be a symlink");
   });
 
   it("creates nested project skill symlinks at multiple levels", () => {
@@ -124,6 +151,7 @@ describe("setup-skills", () => {
 
     runScript(setupScript(ws), ["--clean"], { cwd: ws });
     assert.ok(!existsSync(join(tmp.dir, "AGENTS.md")));
+    assert.ok(!existsSync(join(tmp.dir, "CLAUDE.md")));
     assert.ok(!existsSync(join(tmp.dir, ".claude", "skills", "demo")));
   });
 

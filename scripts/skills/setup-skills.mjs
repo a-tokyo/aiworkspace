@@ -10,8 +10,9 @@
  * root-config/ requires no script changes.
  *
  * Mirror rules (two-level walk of root-config/):
- *   L1 files  → copy to parent root
- *   L1 dirs   → create real dir at parent root, symlink each L2 item
+ *   L1 files     → copy to parent root
+ *   L1 symlinks  → symlink at parent root (same relative target)
+ *   L1 dirs      → create real dir at parent root, symlink each L2 item
  *
  * Per-skill symlinks:
  *   .claude/skills/{name} → canonical  (Claude Code)
@@ -25,7 +26,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync, readlinkSync, copyFileSync, unlinkSync, rmSync } from "node:fs";
-import { join, resolve, relative, dirname, sep } from "node:path";
+import { join, resolve, relative, dirname, basename, sep } from "node:path";
 import {
   REPO_DIR, WORKSPACE, ROOT_CONFIG, CANONICAL_SKILLS,
   MIRROR_SKIP, SKILL_LINK_DIRS, PROJECT_SKILL_SUBDIRS,
@@ -56,6 +57,9 @@ function mirrorRootConfig() {
 
     if (entry.isFile()) {
       syncFile(src, dest, entry.name);
+    } else if (entry.isSymbolicLink()) {
+      const target = readlinkSync(src);
+      safeSymlink(target, dest, { quiet: isEnsure });
     } else if (entry.isDirectory()) {
       if (isSymlink(dest)) { unlinkSync(dest); log(`  ✗ Replaced old symlink ${entry.name}/`); }
       ensureDir(dest);
@@ -179,6 +183,15 @@ function walkProjectCandidates(visit) {
   walk(WORKSPACE, "", 0);
 }
 
+/** Workspace repo is skipped in the sibling walk but has its own project skills. */
+function getWorkspaceRepoProjectEntry() {
+  const skillsDir = join(REPO_DIR, ".agents", "skills");
+  const hasSkills = isRealDir(skillsDir);
+  const hasLinkDir = PROJECT_SKILL_SUBDIRS.some(({ subdir }) => existsSync(join(REPO_DIR, subdir)));
+  if (!hasSkills && !hasLinkDir) return null;
+  return { name: basename(REPO_DIR), dir: REPO_DIR, skillsDir };
+}
+
 function getProjectsWithSkills() {
   const projects = [];
   walkProjectCandidates(({ name, dir }) => {
@@ -187,6 +200,8 @@ function getProjectsWithSkills() {
       projects.push({ name, dir, skillsDir });
     }
   });
+  const repo = getWorkspaceRepoProjectEntry();
+  if (repo) projects.push(repo);
   return projects;
 }
 
@@ -198,6 +213,8 @@ function getProjectSkillLinkRoots() {
     const hasLinkDir = PROJECT_SKILL_SUBDIRS.some(({ subdir }) => existsSync(join(dir, subdir)));
     if (hasSkills || hasLinkDir) roots.push({ name, dir });
   });
+  const repo = getWorkspaceRepoProjectEntry();
+  if (repo) roots.push({ name: repo.name, dir: repo.dir });
   return roots;
 }
 
@@ -234,6 +251,17 @@ function cleanMirroredEntry(entry) {
       console.log(`  ✗ Removed ${entry.name}`);
     } else {
       console.log(`  ⚠ ${entry.name} has local edits — skipping`);
+    }
+    return;
+  }
+
+  if (entry.isSymbolicLink()) {
+    if (!isSymlink(dest)) return;
+    const srcTarget = readlinkSync(join(ROOT_CONFIG, entry.name));
+    const destTarget = readlinkSync(dest);
+    if (destTarget === srcTarget || resolve(WORKSPACE, destTarget) === resolve(WORKSPACE, srcTarget)) {
+      unlinkSync(dest);
+      console.log(`  ✗ Removed ${entry.name}`);
     }
     return;
   }

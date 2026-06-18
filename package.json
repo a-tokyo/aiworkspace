@@ -1,6 +1,6 @@
 {
   "name": "aiworkspace",
-  "version": "0.1.8",
+  "version": "0.2.0",
   "description": "Set up and manage AI agent skills and configs for Cursor, Claude Code, Codex and more across multi-repo workspaces",
   "license": "Apache-2.0",
   "type": "module",
@@ -42,7 +42,7 @@
     "upgrade": "node scripts/upgrade.mjs"
   },
   "dependencies": {
-    "skills": "^1.4.6"
+    "skills": "^1.5.11"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

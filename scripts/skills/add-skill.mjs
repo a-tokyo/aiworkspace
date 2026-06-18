@@ -15,7 +15,7 @@
  * With --project <repo>, installs project-specific into <repo>/.agents/skills/.
  *
  * Usage:
- *   npm run skills:add -- blader/humanizer
+ *   npm run skills:add -- owner/repo
  *   npm run skills:add -- owner/repo --skill react-native-best-practices
  *   npm run skills:add -- owner/repo --skill react-native-best-practices --project my-app
  *   npm run skills:add -- owner/repo --skill some-skill --project workspace
@@ -39,7 +39,7 @@ if (!isHelp && !isListOnly && (!args.length || args[0].startsWith("-"))) {
   console.error(`Usage: npm run skills:add -- <source> [--skill <name>] [--project <repo>]
 
 Examples:
-  npm run skills:add -- blader/humanizer
+  npm run skills:add -- owner/repo
   npm run skills:add -- owner/repo --skill react-native-best-practices
   npm run skills:add -- owner/repo --skill react-native-best-practices --project my-app`);
   process.exit(1);

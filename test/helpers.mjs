@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync, cpSync, chmodSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, cpSync, chmodSync, rmSync, symlinkSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -31,6 +31,7 @@ export function buildFakeWorkspace(parentDir, opts = {}) {
 
   mkdirSync(join(ws, "root-config", ".agents", "skills"), { recursive: true });
   writeFileSync(join(ws, "root-config", "AGENTS.md"), "# Test AGENTS\n");
+  symlinkSync("AGENTS.md", join(ws, "root-config", "CLAUDE.md"));
   writeFileSync(join(ws, "root-config", "README.md"), "# Test README\n");
   writeFileSync(join(ws, "root-config", "skills-lock.json"), "{}\n");
 
