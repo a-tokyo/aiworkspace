@@ -97,6 +97,21 @@ If `aiworkspace` is in `devDependencies`, this updates that package from npm and
 - Node.js >= 18
 - Git
 
+## Related resources
+
+[agent-skills](https://github.com/a-tokyo/agent-skills) is a companion collection of reusable agent skills — browse on [skills.sh](https://www.skills.sh/a-tokyo/agent-skills). Install any of them with the same `skills:add` workflow documented above.
+
+| Skill | What it does |
+|-------|-------------|
+| [production-grade](https://skills.sh/a-tokyo/agent-skills/production-grade) | Engineering posture for non-trivial work: plan before code, simplest-correct solution first, production hardening patterns. |
+| [tribunal](https://skills.sh/a-tokyo/agent-skills/tribunal) | Doer → verifier panel → consensus loop to gate deliverables before ship. |
+
+More skills in the collection — see the [full catalog](https://github.com/a-tokyo/agent-skills#skills).
+
+```bash
+npm run skills:add -- a-tokyo/agent-skills --skill production-grade
+```
+
 ## License
 
 Apache-2.0
