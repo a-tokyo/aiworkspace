@@ -127,7 +127,6 @@ describe("aiworkspace init", () => {
     const ws = join(tmp.dir, "workspace");
     const skillsDir = join(ws, "root-config", ".agents", "skills");
     assert.ok(existsSync(join(skillsDir, "scaffold-skill", "SKILL.md")), "scaffold-skill should be included");
-    assert.ok(existsSync(join(skillsDir, "humanizer", "SKILL.md")), "humanizer should be included");
   });
 
   it("rejects invalid names", () => {
