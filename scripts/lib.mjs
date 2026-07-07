@@ -380,7 +380,7 @@ export function isImportableMcpFile(path, rootConfig = ROOT_CONFIG) {
   if (!existsSync(path)) return false;
   try {
     const st = lstatSync(path);
-    if (st.isDirectory() && !st.isSymbolicLink()) return false;
+    if (st.isDirectory()) return false;
     if (st.isSymbolicLink()) {
       const resolved = resolve(dirname(path), readlinkSync(path));
       if (resolved.startsWith(rootConfig + sep) || resolved === rootConfig) return false;

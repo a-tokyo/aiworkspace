@@ -6,3 +6,4 @@ node_modules
 *.tgz
 *.log
 .cursor/skills/
+.upgrade-mcp-template/
