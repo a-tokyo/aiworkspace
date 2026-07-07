@@ -4,7 +4,7 @@ Single canonical source for AI tool configurations at the parent workspace root 
 
 `npm install` in `workspace/` mirrors this directory to the parent root:
 
-- **Files** (AGENTS.md) are **copied** (protects canonical from tool writes)
+- **Files** (AGENTS.md) are **symlinked**
 - **Symlinks** (CLAUDE.md → AGENTS.md) are **recreated** at parent root
 - **Directories** (.cursor/, .claude/, .agents/) are **created** at root with contents **symlinked** back
 
@@ -24,7 +24,7 @@ root-config/
 
 Add files and directories as needed — the mirror picks them up automatically.
 
-### Files (copied to root)
+### Files (symlinked to root)
 
 | File | Purpose |
 |------|---------|
@@ -77,5 +77,5 @@ npm run skills:setup
 
 ## Important
 
-- **Never edit files at the parent root** — they get overwritten on sync. Edit here.
+- Parent-root files are symlinked to `root-config/` — edits persist in the canonical git-tracked source.
 - **MCP configs** (`.mcp.json`) contain tokens — not tracked here. Each developer sets them up individually.

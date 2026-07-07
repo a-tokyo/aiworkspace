@@ -84,7 +84,7 @@ Verify: ask the agent "List my Jira projects" or "Search Confluence for..." to c
 `npm install` sets up everything automatically:
 
 1. Restores skills from `skills-lock.json`
-2. Mirrors `root-config/` to parent root (copies files, symlinks directories)
+2. Mirrors `root-config/` to parent root (symlinks files and directories)
 3. Creates per-skill symlinks for each AI tool
 4. Installs git hooks (post-merge, post-checkout) for auto-sync
 
