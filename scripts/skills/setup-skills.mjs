@@ -257,8 +257,12 @@ function cleanMirroredEntry(entry) {
 
   if (entry.isFile()) {
     if (isSymlink(dest)) {
-      unlinkSync(dest);
-      console.log(`  ✗ Removed ${entry.name}`);
+      const expected = relative(dirname(dest), join(ROOT_CONFIG, entry.name));
+      const actual = readlinkSync(dest);
+      if (actual === expected || resolve(dirname(dest), actual) === resolve(dirname(dest), expected)) {
+        unlinkSync(dest);
+        console.log(`  ✗ Removed ${entry.name}`);
+      }
     } else if (isFile(dest)) {
       const src = readFileSync(join(ROOT_CONFIG, entry.name), "utf8");
       if (src === readFileSync(dest, "utf8")) {

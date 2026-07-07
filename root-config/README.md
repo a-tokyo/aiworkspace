@@ -77,5 +77,5 @@ npm run skills:setup
 
 ## Important
 
-- Parent-root files are symlinked to `root-config/` — edits persist in the canonical git-tracked source.
+- Parent-root files are symlinked to `root-config/` — edits persist in the canonical git-tracked source. On platforms where symlinks are unavailable (e.g. Windows without developer mode), `safeSymlink` falls back to copying and edits at the parent root will **not** persist automatically.
 - **MCP configs** (`.mcp.json`) contain tokens — not tracked here. Each developer sets them up individually.
