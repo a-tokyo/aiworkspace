@@ -1,0 +1,5 @@
+# Mirror of .agents/mcp.json — keep in sync by hand whenever .agents/mcp.json changes.
+
+[mcp_servers.context7]
+command = "npx"
+args = ["-y", "@upstash/context7-mcp"]

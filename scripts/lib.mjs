@@ -355,3 +355,50 @@ export function runSkillsCli(subcommand, args, { cwd = REPO_DIR } = {}) {
   if (result.status) process.exit(result.status);
 }
 
+// ── MCP config helpers ───────────────────────────────────────────────────
+
+/**
+ * Parse an MCP JSON file. Normalizes VS Code "servers" to mcpServers shape.
+ * Returns null on missing/invalid file.
+ */
+export function readMcpJson(path) {
+  try {
+    const raw = readFileSync(path, "utf8");
+    const data = JSON.parse(raw);
+    const mcpServers = data.mcpServers ?? data.servers;
+    if (!mcpServers || typeof mcpServers !== "object") return null;
+    return { mcpServers, schema: data.mcpServers ? "mcpServers" : "servers" };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True when path is a readable MCP source for import (not a symlink into root-config).
+ */
+export function isImportableMcpFile(path, rootConfig = ROOT_CONFIG) {
+  if (!existsSync(path)) return false;
+  try {
+    const st = lstatSync(path);
+    if (st.isDirectory() && !st.isSymbolicLink()) return false;
+    if (st.isSymbolicLink()) {
+      const resolved = resolve(dirname(path), readlinkSync(path));
+      if (resolved.startsWith(rootConfig + sep) || resolved === rootConfig) return false;
+    }
+    return st.isFile() || st.isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Run setup-skills.mjs --ensure. Exits on failure.
+ */
+export function runSetupEnsure() {
+  const script = join(REPO_DIR, "scripts", "skills", "setup-skills.mjs");
+  const result = spawnSync("node", [script, "--ensure"], { cwd: REPO_DIR, stdio: "inherit" });
+  if (result.error) { console.error(`Setup failed: ${result.error.message}`); process.exit(1); }
+  if (result.signal) { console.error(`Setup killed by ${result.signal}`); process.exit(1); }
+  if (result.status) process.exit(result.status);
+}
+

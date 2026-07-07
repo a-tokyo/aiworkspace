@@ -125,7 +125,9 @@ cd ${name} && npm install
 ├── ${name}/                            <- this repo
 │   ├── root-config/                    <- canonical source for root-level AI configs
 │   │   ├── AGENTS.md                   <- standing instructions for all AI tools
-│   │   ├── .agents/skills/             <- workspace-wide skills
+│   │   ├── .agents/
+│   │   │   ├── mcp.json                <- canonical MCP server definitions
+│   │   │   └── skills/                 <- workspace-wide skills
 │   │   └── skills-lock.json            <- lockfile for workspace-wide skills
 │   ├── .agents/skills/                 <- workspace project-specific skills
 │   ├── scripts/                        <- automation (setup, hooks, skill wrappers)

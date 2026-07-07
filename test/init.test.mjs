@@ -1,6 +1,6 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync, lstatSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -127,6 +127,20 @@ describe("aiworkspace init", () => {
     const ws = join(tmp.dir, "workspace");
     const skillsDir = join(ws, "root-config", ".agents", "skills");
     assert.ok(existsSync(join(skillsDir, "scaffold-skill", "SKILL.md")), "scaffold-skill should be included");
+  });
+
+  it("includes bundled MCP configs in root-config", () => {
+    tmp = makeTmpDir();
+    runScript(INIT_SCRIPT, ["init", "--no-install"], { cwd: tmp.dir });
+
+    const rc = join(tmp.dir, "workspace", "root-config");
+    const mcp = join(rc, ".agents", "mcp.json");
+    assert.ok(existsSync(mcp), "canonical mcp.json should be included");
+    assert.ok(readFileSync(mcp, "utf8").includes("context7"), "mcp.json should define context7");
+    assert.ok(lstatSync(join(rc, ".mcp.json")).isSymbolicLink(), ".mcp.json should be a symlink");
+    assert.ok(lstatSync(join(rc, ".cursor", "mcp.json")).isSymbolicLink(), ".cursor/mcp.json should be a symlink");
+    assert.ok(existsSync(join(rc, ".codex", "config.toml")), "codex twin should be included");
+    assert.ok(existsSync(join(rc, ".vscode", "mcp.json")), "vscode twin should be included");
   });
 
   it("rejects invalid names", () => {
