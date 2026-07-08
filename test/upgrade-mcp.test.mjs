@@ -103,6 +103,30 @@ describe("upgradeMcp", () => {
     assert.ok(merged.mcpServers.context7);
   });
 
+  it("skips parent-root servers with literal credentials", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    mkdirSync(join(tmp.dir, ".cursor"), { recursive: true });
+    writeFileSync(
+      join(tmp.dir, ".cursor", "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          safe: { type: "stdio", command: "npx", args: ["-y", "safe-mcp"] },
+          has_token: { type: "stdio", command: "npx", env: { API_KEY: "sk-abc123secret" } },
+          has_placeholder: { type: "stdio", command: "npx", env: { API_KEY: "${MY_API_KEY}" } },
+          has_header: { type: "http", url: "https://x.com", headers: { Authorization: "Bearer real-token" } },
+        },
+      }) + "\n",
+    );
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const merged = JSON.parse(readFileSync(join(ws, "root-config", ".agents", "mcp.json"), "utf8"));
+    assert.ok(merged.mcpServers.safe, "safe server imported");
+    assert.ok(merged.mcpServers.has_placeholder, "placeholder env imported");
+    assert.equal(merged.mcpServers.has_token, undefined, "literal env token skipped");
+    assert.equal(merged.mcpServers.has_header, undefined, "literal header token skipped");
+  });
+
   it("user wins on server name conflict with template", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });

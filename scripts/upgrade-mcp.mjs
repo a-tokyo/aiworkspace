@@ -8,7 +8,7 @@
 
 import {
   existsSync, readFileSync, writeFileSync, symlinkSync,
-  readlinkSync, cpSync, mkdtempSync,
+  readlinkSync, cpSync, copyFileSync, mkdtempSync, lstatSync,
 } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -47,6 +47,20 @@ function loadTemplateServers(templateRoot) {
   return readMcpJson(path)?.mcpServers ?? {};
 }
 
+/**
+ * Returns true if a server config contains literal credential values
+ * (strings in env/headers that don't use ${PLACEHOLDER} syntax).
+ */
+function hasLiteralCredentials(serverConfig) {
+  const suspicious = (obj) => {
+    if (!obj || typeof obj !== "object") return false;
+    return Object.values(obj).some(
+      (v) => typeof v === "string" && v.length > 0 && !v.includes("${"),
+    );
+  };
+  return suspicious(serverConfig.env) || suspicious(serverConfig.headers);
+}
+
 function collectUserServers(workspace, rootConfig) {
   const servers = {};
   const canonical = join(rootConfig, ".agents", "mcp.json");
@@ -63,7 +77,14 @@ function collectUserServers(workspace, rootConfig) {
     for (const path of parentCandidates) {
       if (!isImportableMcpFile(path, rootConfig)) continue;
       const parsed = readMcpJson(path);
-      if (parsed) Object.assign(servers, parsed.mcpServers);
+      if (!parsed) continue;
+      for (const [name, config] of Object.entries(parsed.mcpServers)) {
+        if (hasLiteralCredentials(config)) {
+          console.warn(`  ⚠ Skipping "${name}" from ${path} — contains literal credentials (use \${VAR} placeholders)`);
+          continue;
+        }
+        servers[name] = config;
+      }
     }
   }
 
@@ -120,9 +141,20 @@ function ensureSymlink(target, linkPath) {
   try {
     symlinkSync(target, linkPath, SYMLINK_TYPE);
     return true;
-  } catch (err) {
-    console.warn(`  ⚠ Could not create symlink at ${linkPath}: ${err.message}`);
-    return false;
+  } catch {
+    const absTarget = resolve(dirname(linkPath), target);
+    try {
+      if (lstatSync(absTarget).isDirectory()) {
+        cpSync(absTarget, linkPath, { recursive: true });
+      } else {
+        copyFileSync(absTarget, linkPath);
+      }
+      console.warn(`  ⚠ Symlink failed for ${linkPath} — copied instead`);
+      return true;
+    } catch (copyErr) {
+      console.warn(`  ⚠ Could not symlink or copy ${linkPath}: ${copyErr.message}`);
+      return false;
+    }
   }
 }
 
