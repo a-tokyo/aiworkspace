@@ -139,6 +139,39 @@ function appendMissingCodexSections(existing, template) {
   return out + "\n";
 }
 
+function serverToCodexSection(name, config) {
+  if (config.type !== "stdio" || !config.command) return null;
+  const lines = [`[mcp_servers.${name}]`, `command = "${config.command}"`];
+  if (config.args?.length) lines.push(`args = ${JSON.stringify(config.args)}`);
+  return lines.join("\n");
+}
+
+function buildCodexFromMerged(merged, templateToml) {
+  let out = appendMissingCodexSections(templateToml.trimEnd(), templateToml);
+  const sections = extractCodexSections(out);
+  for (const [name, config] of Object.entries(merged)) {
+    if (sections.has(name)) continue;
+    const block = serverToCodexSection(name, config);
+    if (block) out = out.trimEnd() + "\n\n" + block + "\n";
+  }
+  return out.endsWith("\n") ? out : out + "\n";
+}
+
+function collectVscodeOnlyServers(vscodeMcp, userServers) {
+  if (!existsSync(vscodeMcp)) return {};
+  const parsed = readMcpJson(vscodeMcp);
+  if (!parsed) {
+    throw new Error(
+      `${vscodeMcp} exists but could not be parsed. Fix or remove it before upgrading.`,
+    );
+  }
+  const only = {};
+  for (const [name, config] of Object.entries(parsed.mcpServers)) {
+    if (!(name in userServers)) only[name] = config;
+  }
+  return only;
+}
+
 function ensureSymlink(target, linkPath) {
   if (existsSync(linkPath)) {
     if (isSymlink(linkPath)) {
@@ -189,14 +222,15 @@ export function upgradeMcp({ templateRoot, repoDir = REPO_DIR }) {
 
   const templateServers = loadTemplateServers(templateRoot);
   const userServers = collectUserServers(workspace, rootConfig);
-  const merged = mergeServers(templateServers, userServers);
+  const vscodeOnlyServers = collectVscodeOnlyServers(vscodeMcp, userServers);
+  const merged = mergeServers(templateServers, { ...userServers, ...vscodeOnlyServers });
   const changedPaths = [];
   const rel = (p) => p.slice(repoDir.length + 1);
 
   console.log("\n🔌 Upgrading MCP configs...\n");
 
-  const added = Object.keys(templateServers).filter((k) => !(k in userServers));
-  const kept = Object.keys(userServers);
+  const added = Object.keys(templateServers).filter((k) => !(k in userServers) && !(k in vscodeOnlyServers));
+  const kept = [...new Set([...Object.keys(userServers), ...Object.keys(vscodeOnlyServers)])];
   for (const name of added) console.log(`  + ${name} (from template)`);
   for (const name of kept) console.log(`  ✓ kept ${name} (user)`);
 
@@ -223,9 +257,10 @@ export function upgradeMcp({ templateRoot, repoDir = REPO_DIR }) {
   const templateCodex = join(templateRoot, ".codex", "config.toml");
   ensureDir(join(rootConfig, ".codex"));
   if (!existsSync(codexToml) && existsSync(templateCodex)) {
-    cpSync(templateCodex, codexToml);
+    const codexOut = buildCodexFromMerged(merged, readFileSync(templateCodex, "utf8"));
+    writeFileSync(codexToml, codexOut);
     changedPaths.push(rel(codexToml));
-    console.log(`  ✓ ${rel(codexToml)} (from template)`);
+    console.log(`  ✓ ${rel(codexToml)} (from template + merged)`);
   } else if (existsSync(codexToml) && existsSync(templateCodex)) {
     const before = readFileSync(codexToml, "utf8");
     const after = appendMissingCodexSections(before, readFileSync(templateCodex, "utf8"));
@@ -244,16 +279,7 @@ export function upgradeMcp({ templateRoot, repoDir = REPO_DIR }) {
     changedPaths.push(rel(vscodeMcp));
     console.log(`  ✓ ${rel(vscodeMcp)} (from template)`);
   } else if (existsSync(vscodeMcp)) {
-    // Existing VS Code config may define servers only in .vscode/mcp.json — fold those in.
-    const parsedVscode = readMcpJson(vscodeMcp);
-    if (!parsedVscode) {
-      throw new Error(
-        `${vscodeMcp} exists but could not be parsed. Fix or remove it before upgrading.`,
-      );
-    }
-    const userVscode = parsedVscode.mcpServers;
-    const vscodeMerged = mergeServers(templateServers, { ...userServers, ...userVscode });
-    const vscodeOut = JSON.stringify({ servers: vscodeMerged }, null, 2) + "\n";
+    const vscodeOut = JSON.stringify({ servers: merged }, null, 2) + "\n";
     const before = readFileSync(vscodeMcp, "utf8");
     if (before !== vscodeOut) {
       writeFileSync(vscodeMcp, vscodeOut);

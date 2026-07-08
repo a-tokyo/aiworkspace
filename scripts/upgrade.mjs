@@ -10,11 +10,10 @@
  */
 
 import { basename, dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { runSetupEnsure } from "./lib.mjs";
-import { upgradeMcp, materializeGitTemplateRoot } from "./upgrade-mcp.mjs";
 
 const REPO_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(join(REPO_DIR, "package.json"), "utf8"));
@@ -117,8 +116,6 @@ function upgradeViaGit() {
   let ver = "?";
   try { ver = JSON.parse(git("show", "upstream/main:package.json")).version; } catch { /* ignore */ }
   console.log(`Scripts updated from aiworkspace v${ver} (git upstream). Review with: git diff --cached`);
-
-  return materializeGitTemplateRoot();
 }
 
 let templateRoot = null;
@@ -131,12 +128,19 @@ try {
     templateRoot = upgradeViaNpm();
     if (!templateRoot) {
       console.warn("npm upgrade failed — falling back to git upstream...");
-      templateRoot = upgradeViaGit();
+      upgradeViaGit();
       ephemeralTemplate = true;
     }
   } else {
-    templateRoot = upgradeViaGit();
+    upgradeViaGit();
     ephemeralTemplate = true;
+  }
+
+  const upgradeMcpUrl = `${pathToFileURL(join(REPO_DIR, "scripts", "upgrade-mcp.mjs")).href}?v=${Date.now()}`;
+  const { upgradeMcp, materializeGitTemplateRoot } = await import(upgradeMcpUrl);
+
+  if (ephemeralTemplate) {
+    templateRoot = materializeGitTemplateRoot();
   }
 
   const { changedPaths: mcpPaths } = upgradeMcp({ templateRoot });

@@ -237,6 +237,45 @@ describe("upgradeMcp", () => {
     assert.equal(changedPaths.length, 0);
   });
 
+  it("folds vscode-only servers into canonical", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const vscodeMcp = join(ws, "root-config", ".vscode", "mcp.json");
+    mkdirSync(dirname(vscodeMcp), { recursive: true });
+    writeFileSync(
+      vscodeMcp,
+      JSON.stringify({
+        servers: {
+          linear: { type: "stdio", command: "npx", args: ["-y", "linear-mcp"] },
+        },
+      }, null, 2) + "\n",
+    );
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const canonical = JSON.parse(readFileSync(join(ws, "root-config", ".agents", "mcp.json"), "utf8"));
+    assert.ok(canonical.mcpServers.linear, "vscode-only server should reach canonical");
+    assert.ok(canonical.mcpServers.context7, "template server should be present");
+  });
+
+  it("creates codex toml with merged stdio servers", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    mkdirSync(join(tmp.dir, ".cursor"), { recursive: true });
+    writeFileSync(
+      join(tmp.dir, ".cursor", "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          slack: { type: "stdio", command: "npx", args: ["-y", "slack-mcp"] },
+        },
+      }) + "\n",
+    );
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const codex = readFileSync(join(ws, "root-config", ".codex", "config.toml"), "utf8");
+    assert.ok(codex.includes("[mcp_servers.context7]"), "template codex section present");
+    assert.ok(codex.includes("[mcp_servers.slack]"), "imported stdio server in codex");
+  });
+
   it("mirrors to parent root after upgradeMcp + setup", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
