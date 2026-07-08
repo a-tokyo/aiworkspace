@@ -44,12 +44,10 @@ export function materializeGitTemplateRoot(repoDir = REPO_DIR) {
 
 function loadTemplateServers(templateRoot) {
   const path = join(templateRoot, ".agents", "mcp.json");
-  if (!existsSync(path)) return {};
+  if (!existsSync(path)) return { servers: {} };
   const parsed = readMcpJson(path);
-  if (!parsed) {
-    throw new Error(`${path} exists but could not be parsed. Fix the template MCP file before upgrading.`);
-  }
-  return parsed.mcpServers;
+  if (!parsed) return { invalid: path };
+  return { servers: parsed.mcpServers };
 }
 
 const SECRET_KEY_PATTERN = /password|credential|secret|token|authorization|api[_-]?key|personal_access_token|(^|_)pat$|(^|_)token$/i;
@@ -306,6 +304,12 @@ export function upgradeMcp({ templateRoot, repoDir = REPO_DIR }) {
     return { changedPaths: [] };
   }
 
+  const templateLoad = loadTemplateServers(templateRoot);
+  if ("invalid" in templateLoad) {
+    console.warn(`\n⚠ ${templateLoad.invalid} exists but could not be parsed — skipping MCP upgrade.\n`);
+    return { changedPaths: [] };
+  }
+
   const rootConfig = join(repoDir, "root-config");
   const workspace = resolve(repoDir, "..");
   const canonical = join(rootConfig, ".agents", "mcp.json");
@@ -314,7 +318,7 @@ export function upgradeMcp({ templateRoot, repoDir = REPO_DIR }) {
   const codexToml = join(rootConfig, ".codex", "config.toml");
   const vscodeMcp = join(rootConfig, ".vscode", "mcp.json");
 
-  const templateServers = loadTemplateServers(templateRoot);
+  const templateServers = templateLoad.servers;
   const userServers = collectUserServers(workspace, rootConfig);
   const vscodeOnlyServers = collectVscodeOnlyServers(vscodeMcp, userServers);
   const merged = mergeServers(templateServers, { ...userServers, ...vscodeOnlyServers });

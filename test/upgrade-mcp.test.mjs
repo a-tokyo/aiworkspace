@@ -228,7 +228,7 @@ describe("upgradeMcp", () => {
     assert.ok(merged.mcpServers.context7);
   });
 
-  it("fails fast when template mcp.json exists but is invalid", () => {
+  it("skips mcp upgrade when template mcp.json exists but is invalid", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
     const badTemplate = join(tmp.dir, "bad-template");
@@ -236,10 +236,9 @@ describe("upgradeMcp", () => {
     mkdirSync(dirname(templateMcp), { recursive: true });
     writeFileSync(templateMcp, "{ invalid template json");
 
-    assert.throws(
-      () => upgradeMcp({ templateRoot: badTemplate, repoDir: ws }),
-      /template MCP file before upgrading/,
-    );
+    const { changedPaths } = upgradeMcp({ templateRoot: badTemplate, repoDir: ws });
+    assert.equal(changedPaths.length, 0);
+    assert.ok(!existsSync(join(ws, "root-config", ".agents", "mcp.json")));
   });
 
   it("fails fast when canonical exists but is invalid", () => {
