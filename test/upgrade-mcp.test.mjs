@@ -201,6 +201,20 @@ describe("upgradeMcp", () => {
     assert.ok(merged.mcpServers.context7);
   });
 
+  it("fails fast when canonical exists but is invalid", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const canonical = join(ws, "root-config", ".agents", "mcp.json");
+    mkdirSync(dirname(canonical), { recursive: true });
+    writeFileSync(canonical, "not valid json {{{");
+
+    assert.throws(
+      () => upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws }),
+      /could not be parsed/,
+    );
+    assert.equal(readFileSync(canonical, "utf8"), "not valid json {{{");
+  });
+
   it("is idempotent on second run", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });

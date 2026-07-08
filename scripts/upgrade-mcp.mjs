@@ -7,7 +7,7 @@
  */
 
 import {
-  existsSync, readFileSync, writeFileSync, symlinkSync,
+  existsSync, readFileSync, writeFileSync, symlinkSync, unlinkSync,
   readlinkSync, cpSync, copyFileSync, mkdtempSync, lstatSync,
 } from "node:fs";
 import { join, dirname, resolve } from "node:path";
@@ -69,7 +69,13 @@ function collectUserServers(workspace, rootConfig) {
 
   if (existsSync(canonical)) {
     const parsed = readMcpJson(canonical);
-    if (parsed) Object.assign(servers, parsed.mcpServers);
+    if (parsed) {
+      Object.assign(servers, parsed.mcpServers);
+    } else {
+      throw new Error(
+        `${canonical} exists but could not be parsed. Fix or remove it before upgrading.`,
+      );
+    }
   } else {
     const parentCandidates = [
       join(workspace, ".agents", "mcp.json"),
@@ -109,6 +115,10 @@ function extractCodexSections(toml) {
       if (current) sections.set(current, buf.join("\n"));
       current = m[1];
       buf = [line];
+    } else if (current && /^\[/.test(line)) {
+      sections.set(current, buf.join("\n").trimEnd());
+      current = null;
+      buf = [];
     } else if (current) {
       buf.push(line);
     }
@@ -133,11 +143,11 @@ function ensureSymlink(target, linkPath) {
   if (existsSync(linkPath)) {
     if (isSymlink(linkPath)) {
       if (readlinkSync(linkPath) === target) return false;
-      console.warn(`  ⚠ ${linkPath} is a symlink with a different target — skipping`);
-      return false;
+      console.warn(`  ⚠ ${linkPath} has a different target — replacing`);
+    } else {
+      console.warn(`  ⚠ ${linkPath} is a regular file — replacing with symlink`);
     }
-    console.warn(`  ⚠ ${linkPath} exists as a real file — skipping`);
-    return false;
+    unlinkSync(linkPath);
   }
   ensureDir(dirname(linkPath));
   try {
