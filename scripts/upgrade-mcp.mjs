@@ -7,10 +7,10 @@
  */
 
 import {
-  existsSync, readFileSync, writeFileSync, mkdirSync, symlinkSync,
-  lstatSync, readlinkSync, cpSync, mkdtempSync,
+  existsSync, readFileSync, writeFileSync, symlinkSync,
+  readlinkSync, cpSync, mkdtempSync,
 } from "node:fs";
-import { join, dirname, resolve, sep } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import {
@@ -116,8 +116,13 @@ function ensureSymlink(target, linkPath) {
     return false;
   }
   ensureDir(dirname(linkPath));
-  symlinkSync(target, linkPath, SYMLINK_TYPE);
-  return true;
+  try {
+    symlinkSync(target, linkPath, SYMLINK_TYPE);
+    return true;
+  } catch (err) {
+    console.warn(`  ⚠ Could not create symlink at ${linkPath}: ${err.message}`);
+    return false;
+  }
 }
 
 /**

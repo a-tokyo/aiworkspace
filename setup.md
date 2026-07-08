@@ -66,7 +66,7 @@ Configs are symlinked from `root-config/`:
 |-------------|-----------|
 | `.agents/mcp.json` | `workspace/root-config/.agents/mcp.json` (canonical) |
 | `.mcp.json` | `.agents/mcp.json` (Claude Code) |
-| `.cursor/mcp.json` | `.agents/mcp.json` (Cursor) |
+| `.cursor/mcp.json` | `../.agents/mcp.json` (Cursor) |
 | `.codex/config.toml` | `workspace/root-config/.codex/config.toml` (Codex) |
 | `.vscode/mcp.json` | `workspace/root-config/.vscode/mcp.json` (VS Code) |
 

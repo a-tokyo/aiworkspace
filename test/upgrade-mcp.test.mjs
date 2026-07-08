@@ -34,6 +34,13 @@ describe("readMcpJson", () => {
     assert.deepEqual(r.mcpServers, { b: { type: "http" } });
     assert.equal(r.schema, "servers");
   });
+
+  it("rejects array servers", () => {
+    tmp = makeTmpDir();
+    const p = join(tmp.dir, "mcp.json");
+    writeFileSync(p, JSON.stringify({ servers: [] }) + "\n");
+    assert.equal(readMcpJson(p), null);
+  });
 });
 
 describe("upgradeMcp", () => {
