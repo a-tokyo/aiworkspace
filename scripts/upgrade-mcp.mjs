@@ -161,8 +161,8 @@ function ensureSymlink(target, linkPath) {
       } else {
         copyFileSync(absTarget, linkPath);
       }
-      console.warn(`  ⚠ Symlink failed for ${linkPath} — copied instead`);
-      return true;
+      console.warn(`  ⚠ Symlink failed for ${linkPath} — copied instead (not staged)`);
+      return false;
     } catch (copyErr) {
       console.warn(`  ⚠ Could not symlink or copy ${linkPath}: ${copyErr.message}`);
       return false;
@@ -245,7 +245,13 @@ export function upgradeMcp({ templateRoot, repoDir = REPO_DIR }) {
     console.log(`  ✓ ${rel(vscodeMcp)} (from template)`);
   } else if (existsSync(vscodeMcp)) {
     // Existing VS Code config may define servers only in .vscode/mcp.json — fold those in.
-    const userVscode = readMcpJson(vscodeMcp)?.mcpServers ?? {};
+    const parsedVscode = readMcpJson(vscodeMcp);
+    if (!parsedVscode) {
+      throw new Error(
+        `${vscodeMcp} exists but could not be parsed. Fix or remove it before upgrading.`,
+      );
+    }
+    const userVscode = parsedVscode.mcpServers;
     const vscodeMerged = mergeServers(templateServers, { ...userServers, ...userVscode });
     const vscodeOut = JSON.stringify({ servers: vscodeMerged }, null, 2) + "\n";
     const before = readFileSync(vscodeMcp, "utf8");

@@ -215,6 +215,20 @@ describe("upgradeMcp", () => {
     assert.equal(readFileSync(canonical, "utf8"), "not valid json {{{");
   });
 
+  it("fails fast when vscode mcp.json exists but is invalid", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const vscodeMcp = join(ws, "root-config", ".vscode", "mcp.json");
+    mkdirSync(dirname(vscodeMcp), { recursive: true });
+    writeFileSync(vscodeMcp, "broken vscode json {{{");
+
+    assert.throws(
+      () => upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws }),
+      /could not be parsed/,
+    );
+    assert.equal(readFileSync(vscodeMcp, "utf8"), "broken vscode json {{{");
+  });
+
   it("is idempotent on second run", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
