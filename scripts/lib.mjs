@@ -383,8 +383,11 @@ export function isImportableMcpFile(path, rootConfig = ROOT_CONFIG) {
     const st = lstatSync(path);
     if (st.isDirectory()) return false;
     if (st.isSymbolicLink()) {
-      const resolved = resolve(dirname(path), readlinkSync(path));
-      if (resolved.startsWith(rootConfig + sep) || resolved === rootConfig) return false;
+      let resolved;
+      try { resolved = realpathSync(path); } catch { resolved = resolve(dirname(path), readlinkSync(path)); }
+      let rc = rootConfig;
+      try { rc = realpathSync(rootConfig); } catch { /* ignore */ }
+      if (resolved.startsWith(rc + sep) || resolved === rc) return false;
     }
     return st.isFile() || st.isSymbolicLink();
   } catch {

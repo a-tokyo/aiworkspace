@@ -1,13 +1,14 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readlinkSync, symlinkSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { makeTmpDir } from "./helpers.mjs";
 import {
   isSymlink, isRealDir, isFile, ensureDir, removeIfEmpty,
   safeSymlink, getSkillNames, normalizeGitHubUrl, cleanCliArtifacts,
   cleanLockEntry,
   validateLockFile,
+  isImportableMcpFile,
 } from "../scripts/lib.mjs";
 
 let tmp;
@@ -209,6 +210,41 @@ describe("normalizeGitHubUrl", () => {
   });
   it("returns null for owner/repo shorthand (not a URL)", () => {
     assert.equal(normalizeGitHubUrl("owner/repo"), null);
+  });
+});
+
+describe("isImportableMcpFile", () => {
+  it("returns true for a real parent-root mcp file", () => {
+    tmp = makeTmpDir();
+    const rootConfig = join(tmp.dir, "workspace", "root-config");
+    const mcp = join(tmp.dir, ".cursor", "mcp.json");
+    mkdirSync(dirname(mcp), { recursive: true });
+    writeFileSync(mcp, "{}\n");
+    assert.equal(isImportableMcpFile(mcp, rootConfig), true);
+  });
+
+  it("returns false for a symlink pointing directly into root-config", () => {
+    tmp = makeTmpDir();
+    const rootConfig = join(tmp.dir, "workspace", "root-config");
+    const canonical = join(rootConfig, ".agents", "mcp.json");
+    mkdirSync(dirname(canonical), { recursive: true });
+    writeFileSync(canonical, "{}\n");
+    const link = join(tmp.dir, ".cursor", "mcp.json");
+    mkdirSync(dirname(link), { recursive: true });
+    symlinkSync(canonical, link);
+    assert.equal(isImportableMcpFile(link, rootConfig), false);
+  });
+
+  it("returns false for a symlink chain into root-config", () => {
+    tmp = makeTmpDir();
+    const rootConfig = join(tmp.dir, "workspace", "root-config");
+    const canonical = join(rootConfig, ".agents", "mcp.json");
+    mkdirSync(dirname(canonical), { recursive: true });
+    writeFileSync(canonical, "{}\n");
+    mkdirSync(join(tmp.dir, ".agents"), { recursive: true });
+    symlinkSync(canonical, join(tmp.dir, ".agents", "mcp.json"));
+    symlinkSync(".agents/mcp.json", join(tmp.dir, ".mcp.json"));
+    assert.equal(isImportableMcpFile(join(tmp.dir, ".mcp.json"), rootConfig), false);
   });
 });
 
