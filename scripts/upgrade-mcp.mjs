@@ -45,7 +45,11 @@ export function materializeGitTemplateRoot(repoDir = REPO_DIR) {
 function loadTemplateServers(templateRoot) {
   const path = join(templateRoot, ".agents", "mcp.json");
   if (!existsSync(path)) return {};
-  return readMcpJson(path)?.mcpServers ?? {};
+  const parsed = readMcpJson(path);
+  if (!parsed) {
+    throw new Error(`${path} exists but could not be parsed. Fix the template MCP file before upgrading.`);
+  }
+  return parsed.mcpServers;
 }
 
 const SECRET_KEY_PATTERN = /password|credential|secret|token|authorization|api[_-]?key|personal_access_token|(^|_)pat$|(^|_)token$/i;
