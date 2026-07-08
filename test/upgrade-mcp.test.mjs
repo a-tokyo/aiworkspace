@@ -257,6 +257,27 @@ describe("upgradeMcp", () => {
     assert.ok(canonical.mcpServers.context7, "template server should be present");
   });
 
+  it("skips vscode-only servers with literal credentials", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const vscodeMcp = join(ws, "root-config", ".vscode", "mcp.json");
+    mkdirSync(dirname(vscodeMcp), { recursive: true });
+    writeFileSync(
+      vscodeMcp,
+      JSON.stringify({
+        servers: {
+          safe: { type: "stdio", command: "npx", args: ["-y", "safe-mcp"] },
+          has_token: { type: "stdio", command: "npx", env: { API_KEY: "sk-secret" } },
+        },
+      }, null, 2) + "\n",
+    );
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const canonical = JSON.parse(readFileSync(join(ws, "root-config", ".agents", "mcp.json"), "utf8"));
+    assert.ok(canonical.mcpServers.safe);
+    assert.equal(canonical.mcpServers.has_token, undefined);
+  });
+
   it("creates codex toml with merged stdio servers", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });

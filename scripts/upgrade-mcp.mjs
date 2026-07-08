@@ -7,8 +7,8 @@
  */
 
 import {
-  existsSync, readFileSync, writeFileSync, symlinkSync, unlinkSync,
-  readlinkSync, cpSync, copyFileSync, mkdtempSync, lstatSync,
+  existsSync, readFileSync, writeFileSync, symlinkSync,
+  readlinkSync, cpSync, copyFileSync, mkdtempSync, lstatSync, rmSync,
 } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -47,20 +47,24 @@ function loadTemplateServers(templateRoot) {
   return readMcpJson(path)?.mcpServers ?? {};
 }
 
-const SECRET_KEY_PATTERN = /token|key|secret|password|auth|bearer|credential/i;
+const SECRET_KEY_PATTERN = /token|secret|password|credential|pat|apikey|api_key|authorization/i;
 
 /**
  * Returns true if a server config contains literal credential values
  * (secret-looking keys with values that don't use ${PLACEHOLDER} syntax).
  */
 function hasLiteralCredentials(serverConfig) {
-  const hasSuspicious = (obj) => {
+  const hasSuspiciousEnv = (obj) => {
     if (!obj || typeof obj !== "object") return false;
     return Object.entries(obj).some(
       ([k, v]) => SECRET_KEY_PATTERN.test(k) && typeof v === "string" && v.length > 0 && !v.includes("${"),
     );
   };
-  return hasSuspicious(serverConfig.env) || hasSuspicious(serverConfig.headers);
+  const auth = serverConfig.headers?.Authorization;
+  if (typeof auth === "string" && /^Bearer\s+\S+$/i.test(auth) && !auth.includes("${")) {
+    return true;
+  }
+  return hasSuspiciousEnv(serverConfig.env) || hasSuspiciousEnv(serverConfig.headers);
 }
 
 function collectUserServers(workspace, rootConfig) {
@@ -143,11 +147,18 @@ function serverToCodexSection(name, config) {
   if (config.type !== "stdio" || !config.command) return null;
   const lines = [`[mcp_servers.${name}]`, `command = "${config.command}"`];
   if (config.args?.length) lines.push(`args = ${JSON.stringify(config.args)}`);
+  if (config.env && Object.keys(config.env).length) {
+    lines.push("");
+    lines.push(`[mcp_servers.${name}.env]`);
+    for (const [k, v] of Object.entries(config.env)) {
+      lines.push(`${k} = "${v}"`);
+    }
+  }
   return lines.join("\n");
 }
 
-function buildCodexFromMerged(merged, templateToml) {
-  let out = appendMissingCodexSections(templateToml.trimEnd(), templateToml);
+function buildCodexFromMerged(merged, existingToml, templateToml) {
+  let out = appendMissingCodexSections(existingToml.trimEnd(), templateToml);
   const sections = extractCodexSections(out);
   for (const [name, config] of Object.entries(merged)) {
     if (sections.has(name)) continue;
@@ -167,7 +178,12 @@ function collectVscodeOnlyServers(vscodeMcp, userServers) {
   }
   const only = {};
   for (const [name, config] of Object.entries(parsed.mcpServers)) {
-    if (!(name in userServers)) only[name] = config;
+    if (name in userServers) continue;
+    if (hasLiteralCredentials(config)) {
+      console.warn(`  ⚠ Skipping "${name}" from ${vscodeMcp} — contains literal credentials (use \${VAR} placeholders)`);
+      continue;
+    }
+    only[name] = config;
   }
   return only;
 }
@@ -180,7 +196,7 @@ function ensureSymlink(target, linkPath) {
     } else {
       console.warn(`  ⚠ ${linkPath} is a regular file — replacing with symlink`);
     }
-    unlinkSync(linkPath);
+    rmSync(linkPath, { recursive: true, force: true });
   }
   ensureDir(dirname(linkPath));
   try {
@@ -257,13 +273,15 @@ export function upgradeMcp({ templateRoot, repoDir = REPO_DIR }) {
   const templateCodex = join(templateRoot, ".codex", "config.toml");
   ensureDir(join(rootConfig, ".codex"));
   if (!existsSync(codexToml) && existsSync(templateCodex)) {
-    const codexOut = buildCodexFromMerged(merged, readFileSync(templateCodex, "utf8"));
+    const templateContent = readFileSync(templateCodex, "utf8");
+    const codexOut = buildCodexFromMerged(merged, "", templateContent);
     writeFileSync(codexToml, codexOut);
     changedPaths.push(rel(codexToml));
     console.log(`  ✓ ${rel(codexToml)} (from template + merged)`);
   } else if (existsSync(codexToml) && existsSync(templateCodex)) {
     const before = readFileSync(codexToml, "utf8");
-    const after = appendMissingCodexSections(before, readFileSync(templateCodex, "utf8"));
+    const templateContent = readFileSync(templateCodex, "utf8");
+    const after = buildCodexFromMerged(merged, before, templateContent);
     if (before !== after) {
       writeFileSync(codexToml, after);
       changedPaths.push(rel(codexToml));
