@@ -73,7 +73,7 @@ export function removeIfEmpty(dir) {
  * Falls back to copy on Windows without Developer Mode.
  * Returns true on success.
  */
-export function safeSymlink(target, linkPath, { quiet = false } = {}) {
+export function safeSymlink(target, linkPath, { quiet = false, replace = false, copyFallback = true } = {}) {
   const log = quiet ? () => {} : console.log;
   const rel = relative(WORKSPACE, linkPath);
 
@@ -81,13 +81,22 @@ export function safeSymlink(target, linkPath, { quiet = false } = {}) {
     const existing = readlinkSync(linkPath);
     const linkDir = dirname(resolve(linkPath));
     if (existing === target || resolve(linkDir, existing) === resolve(linkDir, target)) {
+      if (replace) return false;
       log(`  ✓ ${rel} (exists)`);
       return true;
     }
-    unlinkSync(linkPath);
+    rmSync(linkPath, { force: true });
   } else if (existsSync(linkPath)) {
-    console.warn(`  ⚠ ${rel} exists as real file/dir — skipping`);
-    return false;
+    if (replace && isFile(linkPath)) {
+      console.warn(`  ⚠ ${rel} is a regular file — replacing with symlink`);
+      rmSync(linkPath, { force: true });
+    } else if (replace && isRealDir(linkPath)) {
+      console.warn(`  ⚠ ${rel} is a directory — skipping`);
+      return false;
+    } else {
+      console.warn(`  ⚠ ${rel} exists as real file/dir — skipping`);
+      return false;
+    }
   }
 
   ensureDir(dirname(resolve(linkPath)));
@@ -97,6 +106,10 @@ export function safeSymlink(target, linkPath, { quiet = false } = {}) {
     log(`  ✓ ${rel} → ${target}`);
     return true;
   } catch {
+    if (!copyFallback) {
+      console.warn(`  ⚠ Could not create symlink at ${rel}`);
+      return false;
+    }
     const absTarget = resolve(dirname(resolve(linkPath)), target);
     try {
       if (lstatSync(absTarget).isDirectory()) {
@@ -333,9 +346,10 @@ export function extractNoSetupArg(args) {
 /**
  * Run setup-skills.mjs. Exits on failure.
  */
-export function runSetup() {
+export function runSetup({ ensure = false } = {}) {
   const script = join(REPO_DIR, "scripts", "skills", "setup-skills.mjs");
-  const result = spawnSync("node", [script], { cwd: REPO_DIR, stdio: "inherit" });
+  const args = ensure ? ["--ensure"] : [];
+  const result = spawnSync(process.execPath, [script, ...args], { cwd: REPO_DIR, stdio: "inherit" });
   if (result.error) { console.error(`Setup failed: ${result.error.message}`); process.exit(1); }
   if (result.signal) { console.error(`Setup killed by ${result.signal}`); process.exit(1); }
   if (result.status) process.exit(result.status);
@@ -387,7 +401,8 @@ export function isImportableMcpFile(path, rootConfig = ROOT_CONFIG) {
       try { resolved = realpathSync(path); } catch { resolved = resolve(dirname(path), readlinkSync(path)); }
       let rc = rootConfig;
       try { rc = realpathSync(rootConfig); } catch { /* ignore */ }
-      if (resolved.startsWith(rc + sep) || resolved === rc) return false;
+      const inside = relative(rc, resolved);
+      if (inside === "" || !inside.startsWith("..")) return false;
     }
     return st.isFile() || st.isSymbolicLink();
   } catch {
@@ -395,14 +410,10 @@ export function isImportableMcpFile(path, rootConfig = ROOT_CONFIG) {
   }
 }
 
-/**
- * Run setup-skills.mjs --ensure. Exits on failure.
- */
-export function runSetupEnsure() {
-  const script = join(REPO_DIR, "scripts", "skills", "setup-skills.mjs");
-  const result = spawnSync(process.execPath, [script, "--ensure"], { cwd: REPO_DIR, stdio: "inherit" });
-  if (result.error) { console.error(`Setup failed: ${result.error.message}`); process.exit(1); }
-  if (result.signal) { console.error(`Setup killed by ${result.signal}`); process.exit(1); }
-  if (result.status) process.exit(result.status);
-}
+// MCP template paths relative to root-config/
+export const MCP_TEMPLATE_REL_PATHS = [
+  join(".agents", "mcp.json"),
+  join(".codex", "config.toml"),
+  join(".vscode", "mcp.json"),
+];
 

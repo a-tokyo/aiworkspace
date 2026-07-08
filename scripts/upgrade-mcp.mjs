@@ -7,27 +7,21 @@
  */
 
 import {
-  existsSync, readFileSync, writeFileSync, symlinkSync,
-  readlinkSync, cpSync, copyFileSync, mkdtempSync, lstatSync, rmSync,
+  existsSync, readFileSync, writeFileSync,
+  mkdtempSync,
 } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import {
-  REPO_DIR, readMcpJson, isImportableMcpFile, ensureDir, SYMLINK_TYPE, isSymlink,
-  isRealDir, isFile,
+  REPO_DIR, readMcpJson, isImportableMcpFile, ensureDir, safeSymlink,
+  MCP_TEMPLATE_REL_PATHS,
 } from "./lib.mjs";
-
-const TEMPLATE_FILES = [
-  join(".agents", "mcp.json"),
-  join(".codex", "config.toml"),
-  join(".vscode", "mcp.json"),
-];
 
 /** Materialize root-config MCP template files from git upstream into a temp dir. */
 export function materializeGitTemplateRoot(repoDir = REPO_DIR) {
   const tmp = mkdtempSync(join(tmpdir(), "aiws-mcp-template-"));
-  for (const rel of TEMPLATE_FILES) {
+  for (const rel of MCP_TEMPLATE_REL_PATHS) {
     const dest = join(tmp, rel);
     ensureDir(dirname(dest));
     try {
@@ -44,7 +38,10 @@ export function materializeGitTemplateRoot(repoDir = REPO_DIR) {
 
 function loadTemplateServers(templateRoot) {
   const path = join(templateRoot, ".agents", "mcp.json");
-  if (!existsSync(path)) return { servers: {} };
+  if (!existsSync(path)) {
+    if (existsSync(templateRoot)) return { missing: path };
+    return { servers: {} };
+  }
   const parsed = readMcpJson(path);
   if (!parsed) return { invalid: path };
   return { servers: parsed.mcpServers };
@@ -56,10 +53,6 @@ function isServerConfig(config) {
   return config !== null && typeof config === "object" && !Array.isArray(config);
 }
 
-/**
- * Returns true if a server config contains literal credential values
- * (secret-looking keys with values that don't use ${PLACEHOLDER} syntax).
- */
 function hasLiteralCredentials(serverConfig) {
   if (!isServerConfig(serverConfig)) return false;
   const hasSuspiciousEnv = (obj) => {
@@ -75,28 +68,21 @@ function hasLiteralCredentials(serverConfig) {
   return hasSuspiciousEnv(serverConfig.env) || hasSuspiciousEnv(serverConfig.headers);
 }
 
-function importParentServers(workspace, rootConfig, servers, { onlyMissing = false } = {}) {
-  const parentCandidates = [
-    join(workspace, ".agents", "mcp.json"),
-    join(workspace, ".mcp.json"),
-    join(workspace, ".cursor", "mcp.json"),
-  ];
-  for (const path of parentCandidates) {
-    if (!isImportableMcpFile(path, rootConfig)) continue;
-    const parsed = readMcpJson(path);
-    if (!parsed) continue;
-    for (const [name, config] of Object.entries(parsed.mcpServers)) {
-      if (onlyMissing && name in servers) continue;
-      if (!isServerConfig(config)) {
-        console.warn(`  ⚠ Skipping "${name}" from ${path} — server config must be an object`);
-        continue;
-      }
-      if (hasLiteralCredentials(config)) {
-        console.warn(`  ⚠ Skipping "${name}" from ${path} — contains literal credentials (use \${VAR} placeholders)`);
-        continue;
-      }
-      servers[name] = config;
+function importServersFromFile(path, rootConfig, servers, { onlyMissing = false } = {}) {
+  if (!isImportableMcpFile(path, rootConfig)) return;
+  const parsed = readMcpJson(path);
+  if (!parsed) return;
+  for (const [name, config] of Object.entries(parsed.mcpServers)) {
+    if (onlyMissing && name in servers) continue;
+    if (!isServerConfig(config)) {
+      console.warn(`  ⚠ Skipping "${name}" from ${path} — server config must be an object`);
+      continue;
     }
+    if (hasLiteralCredentials(config)) {
+      console.warn(`  ⚠ Skipping "${name}" from ${path} — contains literal credentials (use \${VAR} placeholders)`);
+      continue;
+    }
+    servers[name] = config;
   }
 }
 
@@ -119,10 +105,15 @@ function collectUserServers(workspace, rootConfig) {
         `${canonical} exists but could not be parsed. Fix or remove it before upgrading.`,
       );
     }
-    // Migrate parent-only servers missing from canonical (e.g. after git pull ships bundled mcp.json).
-    importParentServers(workspace, rootConfig, servers, { onlyMissing: true });
+    importServersFromFile(join(workspace, ".agents", "mcp.json"), rootConfig, servers, { onlyMissing: true });
+    importServersFromFile(join(workspace, ".mcp.json"), rootConfig, servers, { onlyMissing: true });
+    importServersFromFile(join(workspace, ".cursor", "mcp.json"), rootConfig, servers, { onlyMissing: true });
   } else {
-    importParentServers(workspace, rootConfig, servers);
+    importServersFromFile(join(workspace, ".agents", "mcp.json"), rootConfig, servers);
+    importServersFromFile(join(workspace, ".mcp.json"), rootConfig, servers);
+    importServersFromFile(join(workspace, ".cursor", "mcp.json"), rootConfig, servers);
+    const vscodeMcp = join(rootConfig, ".vscode", "mcp.json");
+    importServersFromFile(vscodeMcp, rootConfig, servers);
   }
 
   return servers;
@@ -145,46 +136,6 @@ function mergeServers(template, user) {
     if (!(name in template)) merged[name] = config;
   }
   return { ...merged, ...template };
-}
-
-function extractCodexSections(toml) {
-  const sections = new Map();
-  const lines = toml.split("\n");
-  let current = null;
-  let buf = [];
-
-  for (const line of lines) {
-    const m = line.match(/^\[mcp_servers\.([^\]]+)\]/);
-    if (m) {
-      if (current) sections.set(normalizeCodexSectionKey(current), buf.join("\n"));
-      current = m[1];
-      buf = [line];
-    } else if (current && /^\[/.test(line)) {
-      sections.set(normalizeCodexSectionKey(current), buf.join("\n").trimEnd());
-      current = null;
-      buf = [];
-    } else if (current) {
-      buf.push(line);
-    }
-  }
-  if (current) sections.set(normalizeCodexSectionKey(current), buf.join("\n").trimEnd());
-  return sections;
-}
-
-function appendMissingCodexSections(existing, template) {
-  const existingSections = extractCodexSections(existing);
-  const templateSections = extractCodexSections(template);
-  let out = existing.trimEnd();
-  for (const [name, block] of templateSections) {
-    if (!existingSections.has(name)) {
-      out += (out ? "\n\n" : "") + block;
-    }
-  }
-  return out + "\n";
-}
-
-function normalizeCodexSectionKey(raw) {
-  return raw.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, "$1");
 }
 
 function codexKeySegment(segment) {
@@ -214,92 +165,17 @@ function serverToCodexSection(name, config) {
   return lines.join("\n");
 }
 
-function refreshCodexBundledSections(toml, merged, bundledNames) {
-  const preamble = toml.match(/^[\s\S]*?(?=^\[mcp_servers\.)/m)?.[0]?.trimEnd() ?? "";
-  const sections = extractCodexSections(toml);
-  for (const name of bundledNames) {
-    sections.delete(name);
-    sections.delete(`${name}.env`);
-    const block = serverToCodexSection(name, merged[name]);
-    if (!block) continue;
-    for (const [k, v] of extractCodexSections(block)) sections.set(k, v);
+/** Emit Codex TOML as a projection of merged JSON (preamble preserved, MCP sections regenerated). */
+function emitCodexToml(merged, existingToml = "") {
+  const preamble = existingToml.match(/^[\s\S]*?(?=^\[mcp_servers\.)/m)?.[0]?.trimEnd() ?? "";
+  const blocks = [];
+  for (const [name, config] of Object.entries(merged)) {
+    const block = serverToCodexSection(name, config);
+    if (block) blocks.push(block);
   }
-  const body = [...sections.values()].join("\n\n");
+  const body = blocks.join("\n\n");
   if (!body) return preamble ? `${preamble}\n` : "";
   return (preamble ? `${preamble}\n\n` : "") + `${body}\n`;
-}
-
-function buildCodexFromMerged(merged, existingToml, templateToml, templateServers) {
-  let out = appendMissingCodexSections(existingToml.trimEnd(), templateToml);
-  out = refreshCodexBundledSections(out, merged, Object.keys(templateServers));
-  const sections = extractCodexSections(out);
-  for (const [name, config] of Object.entries(merged)) {
-    if (name in templateServers || sections.has(name)) continue;
-    const block = serverToCodexSection(name, config);
-    if (block) out = out.trimEnd() + "\n\n" + block + "\n";
-  }
-  return out.endsWith("\n") ? out : out + "\n";
-}
-
-function collectVscodeOnlyServers(vscodeMcp, userServers) {
-  if (!existsSync(vscodeMcp)) return {};
-  const parsed = readMcpJson(vscodeMcp);
-  if (!parsed) {
-    throw new Error(
-      `${vscodeMcp} exists but could not be parsed. Fix or remove it before upgrading.`,
-    );
-  }
-  const only = {};
-  for (const [name, config] of Object.entries(parsed.mcpServers)) {
-    if (name in userServers) continue;
-    if (!isServerConfig(config)) {
-      console.warn(`  ⚠ Skipping "${name}" from ${vscodeMcp} — server config must be an object`);
-      continue;
-    }
-    if (hasLiteralCredentials(config)) {
-      console.warn(`  ⚠ Skipping "${name}" from ${vscodeMcp} — contains literal credentials (use \${VAR} placeholders)`);
-      continue;
-    }
-    only[name] = config;
-  }
-  return only;
-}
-
-function ensureSymlink(target, linkPath) {
-  if (existsSync(linkPath)) {
-    if (isSymlink(linkPath)) {
-      if (readlinkSync(linkPath) === target) return false;
-      console.warn(`  ⚠ ${linkPath} has a different target — replacing`);
-      rmSync(linkPath, { force: true });
-    } else if (isFile(linkPath)) {
-      console.warn(`  ⚠ ${linkPath} is a regular file — replacing with symlink`);
-      rmSync(linkPath, { force: true });
-    } else if (isRealDir(linkPath)) {
-      console.warn(`  ⚠ ${linkPath} is a directory — skipping`);
-      return false;
-    } else {
-      rmSync(linkPath, { force: true });
-    }
-  }
-  ensureDir(dirname(linkPath));
-  try {
-    symlinkSync(target, linkPath, SYMLINK_TYPE);
-    return true;
-  } catch {
-    const absTarget = resolve(dirname(linkPath), target);
-    try {
-      if (lstatSync(absTarget).isDirectory()) {
-        cpSync(absTarget, linkPath, { recursive: true });
-      } else {
-        copyFileSync(absTarget, linkPath);
-      }
-      console.warn(`  ⚠ Symlink failed for ${linkPath} — copied instead (not staged)`);
-      return false;
-    } catch (copyErr) {
-      console.warn(`  ⚠ Could not symlink or copy ${linkPath}: ${copyErr.message}`);
-      return false;
-    }
-  }
 }
 
 /**
@@ -316,6 +192,10 @@ export function upgradeMcp({ templateRoot, repoDir = REPO_DIR }) {
     console.warn(`\n⚠ ${templateLoad.invalid} exists but could not be parsed — skipping MCP upgrade.\n`);
     return { changedPaths: [] };
   }
+  if ("missing" in templateLoad) {
+    console.warn(`\n⚠ ${templateLoad.missing} not found in MCP template — skipping MCP upgrade.\n`);
+    return { changedPaths: [] };
+  }
 
   const rootConfig = join(repoDir, "root-config");
   const workspace = resolve(repoDir, "..");
@@ -327,19 +207,15 @@ export function upgradeMcp({ templateRoot, repoDir = REPO_DIR }) {
 
   const templateServers = templateLoad.servers;
   const userServers = collectUserServers(workspace, rootConfig);
-  const vscodeOnlyServers = collectVscodeOnlyServers(vscodeMcp, userServers);
-  const merged = mergeServers(templateServers, { ...userServers, ...vscodeOnlyServers });
+  const merged = mergeServers(templateServers, userServers);
   const changedPaths = [];
   const rel = (p) => p.slice(repoDir.length + 1);
 
   console.log("\n🔌 Upgrading MCP configs...\n");
 
-  const added = Object.keys(templateServers).filter((k) => !(k in userServers) && !(k in vscodeOnlyServers));
-  const refreshed = Object.keys(templateServers).filter((k) => k in userServers || k in vscodeOnlyServers);
-  const kept = [...new Set([
-    ...Object.keys(userServers).filter((k) => !(k in templateServers)),
-    ...Object.keys(vscodeOnlyServers).filter((k) => !(k in templateServers)),
-  ])];
+  const added = Object.keys(templateServers).filter((k) => !(k in userServers));
+  const refreshed = Object.keys(templateServers).filter((k) => k in userServers);
+  const kept = Object.keys(userServers).filter((k) => !(k in templateServers));
   for (const name of added) console.log(`  + ${name} (from template)`);
   for (const name of refreshed) console.log(`  ↻ refreshed ${name} (bundled)`);
   for (const name of kept) console.log(`  ✓ kept ${name} (user)`);
@@ -353,51 +229,37 @@ export function upgradeMcp({ templateRoot, repoDir = REPO_DIR }) {
     console.log(`  ✓ ${rel(canonical)}`);
   }
 
-  if (ensureSymlink(".agents/mcp.json", mcpRootSymlink)) {
+  if (safeSymlink(".agents/mcp.json", mcpRootSymlink, { replace: true, copyFallback: false, quiet: true })) {
     changedPaths.push(rel(mcpRootSymlink));
     console.log(`  ✓ ${rel(mcpRootSymlink)} → .agents/mcp.json`);
   }
 
   ensureDir(join(rootConfig, ".cursor"));
-  if (ensureSymlink("../.agents/mcp.json", cursorMcp)) {
+  if (safeSymlink("../.agents/mcp.json", cursorMcp, { replace: true, copyFallback: false, quiet: true })) {
     changedPaths.push(rel(cursorMcp));
     console.log(`  ✓ ${rel(cursorMcp)} → ../.agents/mcp.json`);
   }
 
   const templateCodex = join(templateRoot, ".codex", "config.toml");
   ensureDir(join(rootConfig, ".codex"));
-  if (!existsSync(codexToml) && existsSync(templateCodex)) {
-    const templateContent = readFileSync(templateCodex, "utf8");
-    const codexOut = buildCodexFromMerged(merged, "", templateContent, templateServers);
+  const codexPreamble = existsSync(codexToml)
+    ? readFileSync(codexToml, "utf8")
+  : existsSync(templateCodex)
+    ? readFileSync(templateCodex, "utf8")
+    : "";
+  const codexOut = emitCodexToml(merged, codexPreamble);
+  if (!existsSync(codexToml) || readFileSync(codexToml, "utf8") !== codexOut) {
     writeFileSync(codexToml, codexOut);
     changedPaths.push(rel(codexToml));
-    console.log(`  ✓ ${rel(codexToml)} (from template + merged)`);
-  } else if (existsSync(codexToml) && existsSync(templateCodex)) {
-    const before = readFileSync(codexToml, "utf8");
-    const templateContent = readFileSync(templateCodex, "utf8");
-    const after = buildCodexFromMerged(merged, before, templateContent, templateServers);
-    if (before !== after) {
-      writeFileSync(codexToml, after);
-      changedPaths.push(rel(codexToml));
-      console.log(`  ✓ ${rel(codexToml)} (merged sections)`);
-    }
+    console.log(`  ✓ ${rel(codexToml)} (from merged)`);
   }
 
-  const templateVscode = join(templateRoot, ".vscode", "mcp.json");
   ensureDir(join(rootConfig, ".vscode"));
-  if (!existsSync(vscodeMcp) && existsSync(templateVscode)) {
-    const vscodeNext = JSON.stringify({ servers: merged }, null, 2) + "\n";
-    writeFileSync(vscodeMcp, vscodeNext);
+  const vscodeOut = JSON.stringify({ servers: merged }, null, 2) + "\n";
+  if (!existsSync(vscodeMcp) || readFileSync(vscodeMcp, "utf8") !== vscodeOut) {
+    writeFileSync(vscodeMcp, vscodeOut);
     changedPaths.push(rel(vscodeMcp));
-    console.log(`  ✓ ${rel(vscodeMcp)} (from template)`);
-  } else if (existsSync(vscodeMcp)) {
-    const vscodeOut = JSON.stringify({ servers: merged }, null, 2) + "\n";
-    const before = readFileSync(vscodeMcp, "utf8");
-    if (before !== vscodeOut) {
-      writeFileSync(vscodeMcp, vscodeOut);
-      changedPaths.push(rel(vscodeMcp));
-      console.log(`  ✓ ${rel(vscodeMcp)} (merged)`);
-    }
+    console.log(`  ✓ ${rel(vscodeMcp)} (from merged)`);
   }
 
   console.log("");

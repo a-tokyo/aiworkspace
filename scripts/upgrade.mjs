@@ -136,7 +136,7 @@ try {
 
   const scriptsLibUrl = `${pathToFileURL(join(REPO_DIR, "scripts", "lib.mjs")).href}?v=${Date.now()}`;
   const upgradeMcpUrl = `${pathToFileURL(join(REPO_DIR, "scripts", "upgrade-mcp.mjs")).href}?v=${Date.now()}`;
-  const { runSetupEnsure } = await import(scriptsLibUrl);
+  const { runSetup } = await import(scriptsLibUrl);
   const { upgradeMcp, materializeGitTemplateRoot } = await import(upgradeMcpUrl);
 
   if (ephemeralTemplate) {
@@ -144,7 +144,7 @@ try {
   }
 
   const { changedPaths: mcpPaths } = upgradeMcp({ templateRoot });
-  runSetupEnsure();
+  runSetup({ ensure: true });
 
   const toStage = ["scripts/"];
   if (existsSync(join(REPO_DIR, "package-lock.json"))) toStage.push("package-lock.json");

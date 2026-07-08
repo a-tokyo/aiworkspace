@@ -52,17 +52,17 @@ MCP servers give agents shared tools. The workspace ships with:
 
 - `context7` — up-to-date documentation for libraries, frameworks, and tools.
 
-These are defined once and shared across tools, the same way `AGENTS.md` and skills are. The canonical config is `.agents/mcp.json`. Claude Code and Cursor use the identical JSON schema, so they link straight to it. Codex (TOML) and VS Code (a different JSON schema) cannot share the file, so they have small hand-maintained twins.
+These are defined once and shared across tools, the same way `AGENTS.md` and skills are. The canonical config is `.agents/mcp.json`. Claude Code and Cursor symlink to it. Codex (TOML) and VS Code (a different JSON schema) cannot share the file, so they have derived twins regenerated from canonical on `npm run upgrade`.
 
 ```
 .agents/mcp.json            canonical config (JSON)
 .mcp.json        -> .agents/mcp.json      Claude Code
 .cursor/mcp.json -> ../.agents/mcp.json   Cursor
-.codex/config.toml          Codex (TOML twin)
-.vscode/mcp.json            VS Code and Copilot (JSON twin, "servers" schema)
+.codex/config.toml          Codex (TOML twin, upgrade-derived)
+.vscode/mcp.json            VS Code and Copilot (JSON twin, upgrade-derived)
 ```
 
-To add or change a server, edit `.agents/mcp.json`, then make the matching change in `.codex/config.toml` and `.vscode/mcp.json`. The two symlinked tools pick it up automatically.
+To add or change a server, edit `.agents/mcp.json`. `npm run upgrade` refreshes the Codex and VS Code twins from canonical automatically.
 
 All tool configs are mirrored for every developer — Cursor, Claude Code, Codex, and VS Code. There is no opt-out; unused configs are inert. To override workspace-wide MCP for one repo, use `<project>/.cursor/mcp.json` (nearest-wins).
 

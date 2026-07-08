@@ -283,18 +283,51 @@ describe("upgradeMcp", () => {
     assert.equal(readFileSync(canonical, "utf8"), "not valid json {{{");
   });
 
-  it("fails fast when vscode mcp.json exists but is invalid", () => {
+  it("skips mcp upgrade when template directory exists but mcp.json is missing", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const emptyTemplate = join(tmp.dir, "empty-template");
+    mkdirSync(emptyTemplate, { recursive: true });
+
+    const { changedPaths } = upgradeMcp({ templateRoot: emptyTemplate, repoDir: ws });
+    assert.equal(changedPaths.length, 0);
+    assert.ok(!existsSync(join(ws, "root-config", ".agents", "mcp.json")));
+  });
+
+  it("ignores invalid vscode mcp.json when canonical missing (migration skip)", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
     const vscodeMcp = join(ws, "root-config", ".vscode", "mcp.json");
     mkdirSync(dirname(vscodeMcp), { recursive: true });
     writeFileSync(vscodeMcp, "broken vscode json {{{");
 
-    assert.throws(
-      () => upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws }),
-      /could not be parsed/,
+    assert.doesNotThrow(() => upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws }));
+    const canonical = JSON.parse(readFileSync(join(ws, "root-config", ".agents", "mcp.json"), "utf8"));
+    assert.ok(canonical.mcpServers.context7);
+    assert.equal(canonical.mcpServers.linear, undefined);
+  });
+
+  it("does not import vscode servers when canonical already exists", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const canonical = join(ws, "root-config", ".agents", "mcp.json");
+    mkdirSync(dirname(canonical), { recursive: true });
+    writeFileSync(
+      canonical,
+      JSON.stringify({ mcpServers: { context7: { type: "stdio", command: "npx" } } }, null, 2) + "\n",
     );
-    assert.equal(readFileSync(vscodeMcp, "utf8"), "broken vscode json {{{");
+    const vscodeMcp = join(ws, "root-config", ".vscode", "mcp.json");
+    mkdirSync(dirname(vscodeMcp), { recursive: true });
+    writeFileSync(
+      vscodeMcp,
+      JSON.stringify({ servers: { linear: { type: "stdio", command: "npx", args: ["-y", "linear-mcp"] } } }, null, 2) + "\n",
+    );
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const merged = JSON.parse(readFileSync(canonical, "utf8"));
+    assert.equal(merged.mcpServers.linear, undefined, "vscode not read when canonical exists");
+    const vscodeOut = JSON.parse(readFileSync(vscodeMcp, "utf8"));
+    assert.ok(vscodeOut.servers.context7, "vscode twin emitted from canonical");
   });
 
   it("is idempotent on second run", () => {
