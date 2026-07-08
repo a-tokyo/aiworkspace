@@ -139,7 +139,7 @@ git commit -m "upgrade scripts from aiworkspace"
 
 New workspaces include `aiworkspace` in `devDependencies` so `npm outdated` shows when a newer template is on npm. Your team's own `version` in `package.json` stays independent.
 
-`npm run upgrade` also scaffolds MCP configs if missing and merges your existing servers with the template (your servers win on conflicts), then re-syncs parent-root symlinks.
+`npm run upgrade` also scaffolds MCP configs if missing and merges your existing servers with the template (bundled servers refresh from the template; your own servers are preserved), then re-syncs parent-root symlinks.
 
 Only `scripts/` is updated from the template package (and lockfile if npm changed the devDep). MCP files are merged into your `root-config/` without overwriting your custom servers. Your other `root-config/` files (AGENTS.md, rules) and skills stay yours.
 

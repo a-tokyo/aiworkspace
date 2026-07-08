@@ -140,7 +140,7 @@ describe("upgradeMcp", () => {
     assert.equal(merged.mcpServers.has_header, undefined, "literal header token skipped");
   });
 
-  it("user wins on server name conflict with template", () => {
+  it("refreshes bundled template servers and keeps user-only servers", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
     const canonical = join(ws, "root-config", ".agents", "mcp.json");
@@ -149,15 +149,17 @@ describe("upgradeMcp", () => {
       canonical,
       JSON.stringify({
         mcpServers: {
-          context7: { type: "stdio", command: "node", args: ["custom-context7.js"] },
+          context7: { type: "stdio", command: "node", args: ["stale-context7.js"] },
+          github: { type: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-github"] },
         },
       }, null, 2) + "\n",
     );
 
     upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
     const merged = JSON.parse(readFileSync(canonical, "utf8"));
-    assert.equal(merged.mcpServers.context7.command, "node");
-    assert.deepEqual(merged.mcpServers.context7.args, ["custom-context7.js"]);
+    assert.equal(merged.mcpServers.context7.command, "npx");
+    assert.deepEqual(merged.mcpServers.context7.args, ["-y", "@upstash/context7-mcp"]);
+    assert.ok(merged.mcpServers.github);
   });
 
   it("does not import parent-root servers when canonical exists", () => {

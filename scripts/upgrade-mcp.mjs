@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import {
   REPO_DIR, readMcpJson, isImportableMcpFile, ensureDir, SYMLINK_TYPE, isSymlink,
+  isRealDir, isFile,
 } from "./lib.mjs";
 
 const TEMPLATE_FILES = [
@@ -104,7 +105,11 @@ function collectUserServers(workspace, rootConfig) {
 }
 
 function mergeServers(template, user) {
-  return { ...template, ...user };
+  const merged = {};
+  for (const [name, config] of Object.entries(user)) {
+    if (!(name in template)) merged[name] = config;
+  }
+  return { ...merged, ...template };
 }
 
 function extractCodexSections(toml) {
@@ -174,11 +179,27 @@ function serverToCodexSection(name, config) {
   return lines.join("\n");
 }
 
-function buildCodexFromMerged(merged, existingToml, templateToml) {
+function refreshCodexBundledSections(toml, merged, bundledNames) {
+  const preamble = toml.match(/^[\s\S]*?(?=^\[mcp_servers\.)/m)?.[0]?.trimEnd() ?? "";
+  const sections = extractCodexSections(toml);
+  for (const name of bundledNames) {
+    sections.delete(name);
+    sections.delete(`${name}.env`);
+    const block = serverToCodexSection(name, merged[name]);
+    if (!block) continue;
+    for (const [k, v] of extractCodexSections(block)) sections.set(k, v);
+  }
+  const body = [...sections.values()].join("\n\n");
+  if (!body) return preamble ? `${preamble}\n` : "";
+  return (preamble ? `${preamble}\n\n` : "") + `${body}\n`;
+}
+
+function buildCodexFromMerged(merged, existingToml, templateToml, templateServers) {
   let out = appendMissingCodexSections(existingToml.trimEnd(), templateToml);
+  out = refreshCodexBundledSections(out, merged, Object.keys(templateServers));
   const sections = extractCodexSections(out);
   for (const [name, config] of Object.entries(merged)) {
-    if (sections.has(name)) continue;
+    if (name in templateServers || sections.has(name)) continue;
     const block = serverToCodexSection(name, config);
     if (block) out = out.trimEnd() + "\n\n" + block + "\n";
   }
@@ -210,10 +231,16 @@ function ensureSymlink(target, linkPath) {
     if (isSymlink(linkPath)) {
       if (readlinkSync(linkPath) === target) return false;
       console.warn(`  ⚠ ${linkPath} has a different target — replacing`);
-    } else {
+      rmSync(linkPath, { force: true });
+    } else if (isFile(linkPath)) {
       console.warn(`  ⚠ ${linkPath} is a regular file — replacing with symlink`);
+      rmSync(linkPath, { force: true });
+    } else if (isRealDir(linkPath)) {
+      console.warn(`  ⚠ ${linkPath} is a directory — skipping`);
+      return false;
+    } else {
+      rmSync(linkPath, { force: true });
     }
-    rmSync(linkPath, { recursive: true, force: true });
   }
   ensureDir(dirname(linkPath));
   try {
@@ -263,8 +290,13 @@ export function upgradeMcp({ templateRoot, repoDir = REPO_DIR }) {
   console.log("\n🔌 Upgrading MCP configs...\n");
 
   const added = Object.keys(templateServers).filter((k) => !(k in userServers) && !(k in vscodeOnlyServers));
-  const kept = [...new Set([...Object.keys(userServers), ...Object.keys(vscodeOnlyServers)])];
+  const refreshed = Object.keys(templateServers).filter((k) => k in userServers || k in vscodeOnlyServers);
+  const kept = [...new Set([
+    ...Object.keys(userServers).filter((k) => !(k in templateServers)),
+    ...Object.keys(vscodeOnlyServers).filter((k) => !(k in templateServers)),
+  ])];
   for (const name of added) console.log(`  + ${name} (from template)`);
+  for (const name of refreshed) console.log(`  ↻ refreshed ${name} (bundled)`);
   for (const name of kept) console.log(`  ✓ kept ${name} (user)`);
 
   ensureDir(join(rootConfig, ".agents"));
@@ -291,14 +323,14 @@ export function upgradeMcp({ templateRoot, repoDir = REPO_DIR }) {
   ensureDir(join(rootConfig, ".codex"));
   if (!existsSync(codexToml) && existsSync(templateCodex)) {
     const templateContent = readFileSync(templateCodex, "utf8");
-    const codexOut = buildCodexFromMerged(merged, "", templateContent);
+    const codexOut = buildCodexFromMerged(merged, "", templateContent, templateServers);
     writeFileSync(codexToml, codexOut);
     changedPaths.push(rel(codexToml));
     console.log(`  ✓ ${rel(codexToml)} (from template + merged)`);
   } else if (existsSync(codexToml) && existsSync(templateCodex)) {
     const before = readFileSync(codexToml, "utf8");
     const templateContent = readFileSync(templateCodex, "utf8");
-    const after = buildCodexFromMerged(merged, before, templateContent);
+    const after = buildCodexFromMerged(merged, before, templateContent, templateServers);
     if (before !== after) {
       writeFileSync(codexToml, after);
       changedPaths.push(rel(codexToml));

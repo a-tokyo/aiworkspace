@@ -65,7 +65,7 @@ When adding or changing a server, edit `.agents/mcp.json`, then update `.codex/c
 
 **Mirror all, no opt-out.** Every developer gets all tool configs (Cursor, Claude Code, Codex, VS Code). `npm install` and git hooks recreate them at the parent root — deleting a parent-root `.cursor/` or `.codex/` folder does not opt out; setup will restore it. Unused symlinks are harmless. Per-project overrides still win via nearest-wins (`<project>/.cursor/mcp.json` etc.).
 
-**Existing workspaces:** `npm run upgrade` scaffolds missing MCP files and merges template servers (e.g. context7) with any servers you already have — your definitions win on name conflicts.
+**Existing workspaces:** `npm run upgrade` scaffolds missing MCP files and merges template servers (e.g. context7) with any servers you already have — bundled servers are refreshed from the template; your own servers (not shipped by aiworkspace) are preserved.
 
 ### `.cursor/` (Cursor IDE)
 

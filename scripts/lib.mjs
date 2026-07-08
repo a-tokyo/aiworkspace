@@ -397,7 +397,7 @@ export function isImportableMcpFile(path, rootConfig = ROOT_CONFIG) {
  */
 export function runSetupEnsure() {
   const script = join(REPO_DIR, "scripts", "skills", "setup-skills.mjs");
-  const result = spawnSync("node", [script, "--ensure"], { cwd: REPO_DIR, stdio: "inherit" });
+  const result = spawnSync(process.execPath, [script, "--ensure"], { cwd: REPO_DIR, stdio: "inherit" });
   if (result.error) { console.error(`Setup failed: ${result.error.message}`); process.exit(1); }
   if (result.signal) { console.error(`Setup killed by ${result.signal}`); process.exit(1); }
   if (result.status) process.exit(result.status);
