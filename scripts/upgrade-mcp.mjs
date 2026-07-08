@@ -47,7 +47,7 @@ function loadTemplateServers(templateRoot) {
   return readMcpJson(path)?.mcpServers ?? {};
 }
 
-const SECRET_KEY_PATTERN = /token|secret|password|credential|pat|apikey|api_key|authorization/i;
+const SECRET_KEY_PATTERN = /password|credential|secret|token|authorization|api[_-]?key|personal_access_token|(^|_)pat$|(^|_)token$/i;
 
 /**
  * Returns true if a server config contains literal credential values

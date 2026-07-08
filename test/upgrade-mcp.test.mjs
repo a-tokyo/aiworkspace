@@ -125,6 +125,7 @@ describe("upgradeMcp", () => {
           has_placeholder: { type: "stdio", command: "npx", env: { API_KEY: "${MY_API_KEY}" } },
           has_header: { type: "http", url: "https://x.com", headers: { Authorization: "Bearer real-token" } },
           has_safe_header: { type: "http", url: "https://x.com", headers: { Accept: "application/json" } },
+          has_path_env: { type: "stdio", command: "npx", env: { PATH: "/usr/local/bin" } },
         },
       }) + "\n",
     );
@@ -134,6 +135,7 @@ describe("upgradeMcp", () => {
     assert.ok(merged.mcpServers.safe, "safe server imported");
     assert.ok(merged.mcpServers.has_placeholder, "placeholder env imported");
     assert.ok(merged.mcpServers.has_safe_header, "non-secret header imported");
+    assert.ok(merged.mcpServers.has_path_env, "PATH env not treated as credential");
     assert.equal(merged.mcpServers.has_token, undefined, "literal env token skipped");
     assert.equal(merged.mcpServers.has_header, undefined, "literal header token skipped");
   });

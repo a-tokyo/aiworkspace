@@ -13,7 +13,6 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, readFileSync, renameSync, rmSync } from "node:fs";
-import { runSetupEnsure } from "./lib.mjs";
 
 const REPO_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(join(REPO_DIR, "package.json"), "utf8"));
@@ -136,7 +135,9 @@ try {
     ephemeralTemplate = true;
   }
 
+  const scriptsLibUrl = `${pathToFileURL(join(REPO_DIR, "scripts", "lib.mjs")).href}?v=${Date.now()}`;
   const upgradeMcpUrl = `${pathToFileURL(join(REPO_DIR, "scripts", "upgrade-mcp.mjs")).href}?v=${Date.now()}`;
+  const { runSetupEnsure } = await import(scriptsLibUrl);
   const { upgradeMcp, materializeGitTemplateRoot } = await import(upgradeMcpUrl);
 
   if (ephemeralTemplate) {
