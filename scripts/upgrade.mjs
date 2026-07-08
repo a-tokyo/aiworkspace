@@ -95,8 +95,7 @@ function upgradeViaNpm() {
   replaceScriptsFromPackage(src, join(REPO_DIR, "scripts"));
 
   const ver = readVersion(join(REPO_DIR, "node_modules", "aiworkspace", "package.json"));
-  const hint = existsSync(join(REPO_DIR, ".git")) ? " Review with: git diff --cached" : "";
-  console.log(`Scripts updated from aiworkspace v${ver} (npm).${hint}`);
+  console.log(`Scripts updated from aiworkspace v${ver} (npm).`);
 
   return join(REPO_DIR, "node_modules", "aiworkspace", "root-config");
 }
@@ -114,7 +113,7 @@ function upgradeViaGit() {
   execFileSync("git", ["checkout", "upstream/main", "--", "scripts/"], { cwd: REPO_DIR, stdio: "inherit" });
   let ver = "?";
   try { ver = JSON.parse(git("show", "upstream/main:package.json")).version; } catch { /* ignore */ }
-  console.log(`Scripts updated from aiworkspace v${ver} (git upstream). Review with: git diff --cached`);
+  console.log(`Scripts updated from aiworkspace v${ver} (git upstream).`);
 }
 
 let templateRoot = null;
@@ -151,6 +150,9 @@ try {
   if (existsSync(join(REPO_DIR, "package-lock.json"))) toStage.push("package-lock.json");
   toStage.push("package.json", ...mcpPaths);
   stageGit(toStage);
+  if (existsSync(join(REPO_DIR, ".git"))) {
+    console.log("Staged upgrade changes — review with: git diff --cached");
+  }
 } catch (err) {
   console.error(`Upgrade failed: ${err.message}`);
   process.exit(1);

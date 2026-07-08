@@ -50,11 +50,16 @@ function loadTemplateServers(templateRoot) {
 
 const SECRET_KEY_PATTERN = /password|credential|secret|token|authorization|api[_-]?key|personal_access_token|(^|_)pat$|(^|_)token$/i;
 
+function isServerConfig(config) {
+  return config !== null && typeof config === "object" && !Array.isArray(config);
+}
+
 /**
  * Returns true if a server config contains literal credential values
  * (secret-looking keys with values that don't use ${PLACEHOLDER} syntax).
  */
 function hasLiteralCredentials(serverConfig) {
+  if (!isServerConfig(serverConfig)) return false;
   const hasSuspiciousEnv = (obj) => {
     if (!obj || typeof obj !== "object") return false;
     return Object.entries(obj).some(
@@ -75,7 +80,13 @@ function collectUserServers(workspace, rootConfig) {
   if (existsSync(canonical)) {
     const parsed = readMcpJson(canonical);
     if (parsed) {
-      Object.assign(servers, parsed.mcpServers);
+      for (const [name, config] of Object.entries(parsed.mcpServers)) {
+        if (!isServerConfig(config)) {
+          console.warn(`  ⚠ Skipping "${name}" in ${canonical} — server config must be an object`);
+          continue;
+        }
+        servers[name] = config;
+      }
     } else {
       throw new Error(
         `${canonical} exists but could not be parsed. Fix or remove it before upgrading.`,
@@ -92,6 +103,10 @@ function collectUserServers(workspace, rootConfig) {
       const parsed = readMcpJson(path);
       if (!parsed) continue;
       for (const [name, config] of Object.entries(parsed.mcpServers)) {
+        if (!isServerConfig(config)) {
+          console.warn(`  ⚠ Skipping "${name}" from ${path} — server config must be an object`);
+          continue;
+        }
         if (hasLiteralCredentials(config)) {
           console.warn(`  ⚠ Skipping "${name}" from ${path} — contains literal credentials (use \${VAR} placeholders)`);
           continue;
@@ -228,6 +243,10 @@ function collectVscodeOnlyServers(vscodeMcp, userServers) {
   const only = {};
   for (const [name, config] of Object.entries(parsed.mcpServers)) {
     if (name in userServers) continue;
+    if (!isServerConfig(config)) {
+      console.warn(`  ⚠ Skipping "${name}" from ${vscodeMcp} — server config must be an object`);
+      continue;
+    }
     if (hasLiteralCredentials(config)) {
       console.warn(`  ⚠ Skipping "${name}" from ${vscodeMcp} — contains literal credentials (use \${VAR} placeholders)`);
       continue;

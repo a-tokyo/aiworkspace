@@ -140,6 +140,29 @@ describe("upgradeMcp", () => {
     assert.equal(merged.mcpServers.has_header, undefined, "literal header token skipped");
   });
 
+  it("skips null or non-object server configs without aborting", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    mkdirSync(join(tmp.dir, ".cursor"), { recursive: true });
+    writeFileSync(
+      join(tmp.dir, ".cursor", "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          valid: { type: "stdio", command: "npx", args: ["-y", "ok-mcp"] },
+          broken: null,
+          also_broken: "stdio",
+        },
+      }) + "\n",
+    );
+
+    assert.doesNotThrow(() => upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws }));
+    const merged = JSON.parse(readFileSync(join(ws, "root-config", ".agents", "mcp.json"), "utf8"));
+    assert.ok(merged.mcpServers.valid);
+    assert.ok(merged.mcpServers.context7);
+    assert.equal(merged.mcpServers.broken, undefined);
+    assert.equal(merged.mcpServers.also_broken, undefined);
+  });
+
   it("refreshes bundled template servers and keeps user-only servers", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
