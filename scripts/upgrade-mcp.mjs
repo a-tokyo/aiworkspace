@@ -47,18 +47,20 @@ function loadTemplateServers(templateRoot) {
   return readMcpJson(path)?.mcpServers ?? {};
 }
 
+const SECRET_KEY_PATTERN = /token|key|secret|password|auth|bearer|credential/i;
+
 /**
  * Returns true if a server config contains literal credential values
- * (strings in env/headers that don't use ${PLACEHOLDER} syntax).
+ * (secret-looking keys with values that don't use ${PLACEHOLDER} syntax).
  */
 function hasLiteralCredentials(serverConfig) {
-  const suspicious = (obj) => {
+  const hasSuspicious = (obj) => {
     if (!obj || typeof obj !== "object") return false;
-    return Object.values(obj).some(
-      (v) => typeof v === "string" && v.length > 0 && !v.includes("${"),
+    return Object.entries(obj).some(
+      ([k, v]) => SECRET_KEY_PATTERN.test(k) && typeof v === "string" && v.length > 0 && !v.includes("${"),
     );
   };
-  return suspicious(serverConfig.env) || suspicious(serverConfig.headers);
+  return hasSuspicious(serverConfig.env) || hasSuspicious(serverConfig.headers);
 }
 
 function collectUserServers(workspace, rootConfig) {

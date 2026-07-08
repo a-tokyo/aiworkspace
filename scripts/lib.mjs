@@ -365,9 +365,10 @@ export function readMcpJson(path) {
   try {
     const raw = readFileSync(path, "utf8");
     const data = JSON.parse(raw);
-    const mcpServers = data.mcpServers ?? data.servers;
-    if (!mcpServers || typeof mcpServers !== "object" || Array.isArray(mcpServers)) return null;
-    return { mcpServers, schema: data.mcpServers ? "mcpServers" : "servers" };
+    const isValidObj = (v) => v && typeof v === "object" && !Array.isArray(v);
+    if (isValidObj(data.mcpServers)) return { mcpServers: data.mcpServers, schema: "mcpServers" };
+    if (isValidObj(data.servers)) return { mcpServers: data.servers, schema: "servers" };
+    return null;
   } catch {
     return null;
   }

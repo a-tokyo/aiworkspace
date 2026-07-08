@@ -41,6 +41,15 @@ describe("readMcpJson", () => {
     writeFileSync(p, JSON.stringify({ servers: [] }) + "\n");
     assert.equal(readMcpJson(p), null);
   });
+
+  it("falls back to servers when mcpServers is invalid", () => {
+    tmp = makeTmpDir();
+    const p = join(tmp.dir, "mcp.json");
+    writeFileSync(p, JSON.stringify({ mcpServers: [], servers: { c: { type: "stdio" } } }) + "\n");
+    const r = readMcpJson(p);
+    assert.deepEqual(r.mcpServers, { c: { type: "stdio" } });
+    assert.equal(r.schema, "servers");
+  });
 });
 
 describe("upgradeMcp", () => {
@@ -115,6 +124,7 @@ describe("upgradeMcp", () => {
           has_token: { type: "stdio", command: "npx", env: { API_KEY: "sk-abc123secret" } },
           has_placeholder: { type: "stdio", command: "npx", env: { API_KEY: "${MY_API_KEY}" } },
           has_header: { type: "http", url: "https://x.com", headers: { Authorization: "Bearer real-token" } },
+          has_safe_header: { type: "http", url: "https://x.com", headers: { Accept: "application/json" } },
         },
       }) + "\n",
     );
@@ -123,6 +133,7 @@ describe("upgradeMcp", () => {
     const merged = JSON.parse(readFileSync(join(ws, "root-config", ".agents", "mcp.json"), "utf8"));
     assert.ok(merged.mcpServers.safe, "safe server imported");
     assert.ok(merged.mcpServers.has_placeholder, "placeholder env imported");
+    assert.ok(merged.mcpServers.has_safe_header, "non-secret header imported");
     assert.equal(merged.mcpServers.has_token, undefined, "literal env token skipped");
     assert.equal(merged.mcpServers.has_header, undefined, "literal header token skipped");
   });
