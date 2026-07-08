@@ -121,18 +121,22 @@ function upgradeViaGit() {
   return materializeGitTemplateRoot();
 }
 
+let templateRoot = null;
+let ephemeralTemplate = false;
+
 try {
   const hasNpmDep = pkg.devDependencies?.aiworkspace || pkg.dependencies?.aiworkspace;
-  let templateRoot = null;
 
   if (hasNpmDep) {
     templateRoot = upgradeViaNpm();
     if (!templateRoot) {
       console.warn("npm upgrade failed — falling back to git upstream...");
       templateRoot = upgradeViaGit();
+      ephemeralTemplate = true;
     }
   } else {
     templateRoot = upgradeViaGit();
+    ephemeralTemplate = true;
   }
 
   const { changedPaths: mcpPaths } = upgradeMcp({ templateRoot });
@@ -145,4 +149,8 @@ try {
 } catch (err) {
   console.error(`Upgrade failed: ${err.message}`);
   process.exit(1);
+} finally {
+  if (ephemeralTemplate && templateRoot) {
+    rmSync(templateRoot, { recursive: true, force: true });
+  }
 }

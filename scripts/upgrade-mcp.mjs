@@ -8,12 +8,13 @@
 
 import {
   existsSync, readFileSync, writeFileSync, mkdirSync, symlinkSync,
-  lstatSync, readlinkSync, cpSync,
+  lstatSync, readlinkSync, cpSync, mkdtempSync,
 } from "node:fs";
 import { join, dirname, resolve, sep } from "node:path";
+import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import {
-  REPO_DIR, readMcpJson, isImportableMcpFile, ensureDir, SYMLINK_TYPE,
+  REPO_DIR, readMcpJson, isImportableMcpFile, ensureDir, SYMLINK_TYPE, isSymlink,
 } from "./lib.mjs";
 
 const TEMPLATE_FILES = [
@@ -24,8 +25,7 @@ const TEMPLATE_FILES = [
 
 /** Materialize root-config MCP template files from git upstream into a temp dir. */
 export function materializeGitTemplateRoot(repoDir = REPO_DIR) {
-  const tmp = join(repoDir, ".upgrade-mcp-template");
-  mkdirSync(tmp, { recursive: true });
+  const tmp = mkdtempSync(join(tmpdir(), "aiws-mcp-template-"));
   for (const rel of TEMPLATE_FILES) {
     const dest = join(tmp, rel);
     ensureDir(dirname(dest));
@@ -107,11 +107,14 @@ function appendMissingCodexSections(existing, template) {
 
 function ensureSymlink(target, linkPath) {
   if (existsSync(linkPath)) {
-    try {
-      if (lstatSync(linkPath).isSymbolicLink() && readlinkSync(linkPath) === target) return false;
-    } catch { /* replace below */ }
+    if (isSymlink(linkPath)) {
+      if (readlinkSync(linkPath) === target) return false;
+      console.warn(`  ⚠ ${linkPath} is a symlink with a different target — skipping`);
+      return false;
+    }
+    console.warn(`  ⚠ ${linkPath} exists as a real file — skipping`);
+    return false;
   }
-  if (existsSync(linkPath)) return false;
   ensureDir(dirname(linkPath));
   symlinkSync(target, linkPath, SYMLINK_TYPE);
   return true;
@@ -185,12 +188,13 @@ export function upgradeMcp({ templateRoot, repoDir = REPO_DIR }) {
 
   const templateVscode = join(templateRoot, ".vscode", "mcp.json");
   ensureDir(join(rootConfig, ".vscode"));
-  const vscodeNext = JSON.stringify({ servers: merged }, null, 2) + "\n";
   if (!existsSync(vscodeMcp) && existsSync(templateVscode)) {
+    const vscodeNext = JSON.stringify({ servers: merged }, null, 2) + "\n";
     writeFileSync(vscodeMcp, vscodeNext);
     changedPaths.push(rel(vscodeMcp));
     console.log(`  ✓ ${rel(vscodeMcp)} (from template)`);
   } else if (existsSync(vscodeMcp)) {
+    // Existing VS Code config may define servers only in .vscode/mcp.json — fold those in.
     const userVscode = readMcpJson(vscodeMcp)?.mcpServers ?? {};
     const vscodeMerged = mergeServers(templateServers, { ...userServers, ...userVscode });
     const vscodeOut = JSON.stringify({ servers: vscodeMerged }, null, 2) + "\n";
