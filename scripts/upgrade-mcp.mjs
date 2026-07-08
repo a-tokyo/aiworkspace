@@ -104,6 +104,17 @@ function collectUserServers(workspace, rootConfig) {
   return servers;
 }
 
+/**
+ * Merge template (bundled) MCP servers with user servers.
+ *
+ * Precedence:
+ * - Servers only in `user` are preserved (e.g. a personal `github` entry).
+ * - Servers in `template` always win on name overlap — bundled servers like
+ *   `context7` refresh from aiworkspace on `npm run upgrade`.
+ *
+ * To override a bundled server locally, use per-project MCP config
+ * (`<project>/.cursor/mcp.json`, nearest-wins) rather than editing canonical.
+ */
 function mergeServers(template, user) {
   const merged = {};
   for (const [name, config] of Object.entries(user)) {
