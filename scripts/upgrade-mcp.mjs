@@ -30,8 +30,9 @@ export function materializeGitTemplateRoot(repoDir = REPO_DIR) {
     const dest = join(tmp, rel);
     ensureDir(dirname(dest));
     try {
+      const gitPath = rel.replaceAll("\\", "/");
       const content = execFileSync(
-        "git", ["show", `upstream/main:root-config/${rel}`],
+        "git", ["show", `upstream/main:root-config/${gitPath}`],
         { cwd: repoDir, encoding: "utf8", stdio: ["pipe", "pipe", "ignore"] },
       );
       writeFileSync(dest, content);
@@ -48,22 +49,22 @@ function loadTemplateServers(templateRoot) {
 
 function collectUserServers(workspace, rootConfig) {
   const servers = {};
-  const parentCandidates = [
-    join(workspace, ".agents", "mcp.json"),
-    join(workspace, ".mcp.json"),
-    join(workspace, ".cursor", "mcp.json"),
-  ];
-
-  for (const path of parentCandidates) {
-    if (!isImportableMcpFile(path, rootConfig)) continue;
-    const parsed = readMcpJson(path);
-    if (parsed) Object.assign(servers, parsed.mcpServers);
-  }
-
   const canonical = join(rootConfig, ".agents", "mcp.json");
+
   if (existsSync(canonical)) {
     const parsed = readMcpJson(canonical);
     if (parsed) Object.assign(servers, parsed.mcpServers);
+  } else {
+    const parentCandidates = [
+      join(workspace, ".agents", "mcp.json"),
+      join(workspace, ".mcp.json"),
+      join(workspace, ".cursor", "mcp.json"),
+    ];
+    for (const path of parentCandidates) {
+      if (!isImportableMcpFile(path, rootConfig)) continue;
+      const parsed = readMcpJson(path);
+      if (parsed) Object.assign(servers, parsed.mcpServers);
+    }
   }
 
   return servers;

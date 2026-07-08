@@ -123,6 +123,32 @@ describe("upgradeMcp", () => {
     assert.deepEqual(merged.mcpServers.context7.args, ["custom-context7.js"]);
   });
 
+  it("does not import parent-root servers when canonical exists", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const canonical = join(ws, "root-config", ".agents", "mcp.json");
+    mkdirSync(dirname(canonical), { recursive: true });
+    writeFileSync(
+      canonical,
+      JSON.stringify({
+        mcpServers: { github: { type: "http", url: "https://example.com" } },
+      }, null, 2) + "\n",
+    );
+    mkdirSync(join(tmp.dir, ".cursor"), { recursive: true });
+    writeFileSync(
+      join(tmp.dir, ".cursor", "mcp.json"),
+      JSON.stringify({
+        mcpServers: { secret_server: { type: "stdio", command: "secret", env: { TOKEN: "real-token" } } },
+      }) + "\n",
+    );
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const merged = JSON.parse(readFileSync(canonical, "utf8"));
+    assert.ok(merged.mcpServers.github, "canonical server preserved");
+    assert.ok(merged.mcpServers.context7, "template server added");
+    assert.equal(merged.mcpServers.secret_server, undefined, "parent-root server NOT imported when canonical exists");
+  });
+
   it("does not import parent symlink into root-config", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
