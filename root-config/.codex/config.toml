@@ -1,4 +1,4 @@
-# Mirror of .agents/mcp.json — keep in sync by hand whenever .agents/mcp.json changes.
+# Auto-generated from .agents/mcp.json — run `npm run upgrade` to refresh.
 
 [mcp_servers.context7]
 command = "npx"
