@@ -299,6 +299,32 @@ describe("upgradeMcp", () => {
     assert.ok(codex.includes("[mcp_servers.slack]"), "imported stdio server in codex");
   });
 
+  it("quotes special characters in generated codex sections", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    mkdirSync(join(tmp.dir, ".cursor"), { recursive: true });
+    writeFileSync(
+      join(tmp.dir, ".cursor", "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          "my.server": {
+            type: "stdio",
+            command: "C:\\tools\\mcp.exe",
+            args: ['--msg', 'say "hi"'],
+            env: { CUSTOM_MSG: "${MSG}" },
+          },
+        },
+      }) + "\n",
+    );
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const codex = readFileSync(join(ws, "root-config", ".codex", "config.toml"), "utf8");
+    assert.ok(codex.includes('[mcp_servers."my.server"]'));
+    assert.ok(codex.includes('command = "C:\\\\tools\\\\mcp.exe"'));
+    assert.ok(codex.includes('args = ["--msg","say \\"hi\\""]'));
+    assert.ok(codex.includes('CUSTOM_MSG = "${MSG}"'));
+  });
+
   it("mirrors to parent root after upgradeMcp + setup", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });

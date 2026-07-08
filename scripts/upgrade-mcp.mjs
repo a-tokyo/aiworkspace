@@ -116,18 +116,18 @@ function extractCodexSections(toml) {
   for (const line of lines) {
     const m = line.match(/^\[mcp_servers\.([^\]]+)\]/);
     if (m) {
-      if (current) sections.set(current, buf.join("\n"));
+      if (current) sections.set(normalizeCodexSectionKey(current), buf.join("\n"));
       current = m[1];
       buf = [line];
     } else if (current && /^\[/.test(line)) {
-      sections.set(current, buf.join("\n").trimEnd());
+      sections.set(normalizeCodexSectionKey(current), buf.join("\n").trimEnd());
       current = null;
       buf = [];
     } else if (current) {
       buf.push(line);
     }
   }
-  if (current) sections.set(current, buf.join("\n").trimEnd());
+  if (current) sections.set(normalizeCodexSectionKey(current), buf.join("\n").trimEnd());
   return sections;
 }
 
@@ -143,15 +143,32 @@ function appendMissingCodexSections(existing, template) {
   return out + "\n";
 }
 
+function normalizeCodexSectionKey(raw) {
+  return raw.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, "$1");
+}
+
+function codexKeySegment(segment) {
+  return /^[A-Za-z0-9_-]+$/.test(segment) ? segment : JSON.stringify(segment);
+}
+
+function codexServerTable(name, suffix = "") {
+  let table = `mcp_servers.${codexKeySegment(name)}`;
+  if (suffix) table += `.${suffix}`;
+  return table;
+}
+
 function serverToCodexSection(name, config) {
   if (config.type !== "stdio" || !config.command) return null;
-  const lines = [`[mcp_servers.${name}]`, `command = "${config.command}"`];
+  const lines = [
+    `[${codexServerTable(name)}]`,
+    `command = ${JSON.stringify(config.command)}`,
+  ];
   if (config.args?.length) lines.push(`args = ${JSON.stringify(config.args)}`);
   if (config.env && Object.keys(config.env).length) {
     lines.push("");
-    lines.push(`[mcp_servers.${name}.env]`);
+    lines.push(`[${codexServerTable(name, "env")}]`);
     for (const [k, v] of Object.entries(config.env)) {
-      lines.push(`${k} = "${v}"`);
+      lines.push(`${codexKeySegment(k)} = ${JSON.stringify(String(v))}`);
     }
   }
   return lines.join("\n");
