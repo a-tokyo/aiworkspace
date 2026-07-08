@@ -185,7 +185,36 @@ describe("upgradeMcp", () => {
     assert.ok(merged.mcpServers.github);
   });
 
-  it("does not import parent-root servers when canonical exists", () => {
+  it("migrates missing parent-root servers when canonical exists", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const canonical = join(ws, "root-config", ".agents", "mcp.json");
+    mkdirSync(dirname(canonical), { recursive: true });
+    writeFileSync(
+      canonical,
+      JSON.stringify({
+        mcpServers: { context7: { type: "stdio", command: "npx", args: ["-y", "@upstash/context7-mcp"] } },
+      }, null, 2) + "\n",
+    );
+    mkdirSync(join(tmp.dir, ".cursor"), { recursive: true });
+    writeFileSync(
+      join(tmp.dir, ".cursor", "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          github: { type: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-github"] },
+          secret_server: { type: "stdio", command: "secret", env: { TOKEN: "real-token" } },
+        },
+      }) + "\n",
+    );
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const merged = JSON.parse(readFileSync(canonical, "utf8"));
+    assert.ok(merged.mcpServers.context7, "bundled server preserved");
+    assert.ok(merged.mcpServers.github, "parent-only server migrated into canonical");
+    assert.equal(merged.mcpServers.secret_server, undefined, "parent server with literal credentials not imported");
+  });
+
+  it("does not overwrite canonical servers from parent-root", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
     const canonical = join(ws, "root-config", ".agents", "mcp.json");
@@ -200,15 +229,14 @@ describe("upgradeMcp", () => {
     writeFileSync(
       join(tmp.dir, ".cursor", "mcp.json"),
       JSON.stringify({
-        mcpServers: { secret_server: { type: "stdio", command: "secret", env: { TOKEN: "real-token" } } },
+        mcpServers: { github: { type: "stdio", command: "npx", args: ["-y", "other-github"] } },
       }) + "\n",
     );
 
     upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
     const merged = JSON.parse(readFileSync(canonical, "utf8"));
-    assert.ok(merged.mcpServers.github, "canonical server preserved");
-    assert.ok(merged.mcpServers.context7, "template server added");
-    assert.equal(merged.mcpServers.secret_server, undefined, "parent-root server NOT imported when canonical exists");
+    assert.equal(merged.mcpServers.github.type, "http");
+    assert.equal(merged.mcpServers.github.url, "https://example.com");
   });
 
   it("does not import parent symlink into root-config", () => {

@@ -75,6 +75,31 @@ function hasLiteralCredentials(serverConfig) {
   return hasSuspiciousEnv(serverConfig.env) || hasSuspiciousEnv(serverConfig.headers);
 }
 
+function importParentServers(workspace, rootConfig, servers, { onlyMissing = false } = {}) {
+  const parentCandidates = [
+    join(workspace, ".agents", "mcp.json"),
+    join(workspace, ".mcp.json"),
+    join(workspace, ".cursor", "mcp.json"),
+  ];
+  for (const path of parentCandidates) {
+    if (!isImportableMcpFile(path, rootConfig)) continue;
+    const parsed = readMcpJson(path);
+    if (!parsed) continue;
+    for (const [name, config] of Object.entries(parsed.mcpServers)) {
+      if (onlyMissing && name in servers) continue;
+      if (!isServerConfig(config)) {
+        console.warn(`  ⚠ Skipping "${name}" from ${path} — server config must be an object`);
+        continue;
+      }
+      if (hasLiteralCredentials(config)) {
+        console.warn(`  ⚠ Skipping "${name}" from ${path} — contains literal credentials (use \${VAR} placeholders)`);
+        continue;
+      }
+      servers[name] = config;
+    }
+  }
+}
+
 function collectUserServers(workspace, rootConfig) {
   const servers = {};
   const canonical = join(rootConfig, ".agents", "mcp.json");
@@ -94,28 +119,10 @@ function collectUserServers(workspace, rootConfig) {
         `${canonical} exists but could not be parsed. Fix or remove it before upgrading.`,
       );
     }
+    // Migrate parent-only servers missing from canonical (e.g. after git pull ships bundled mcp.json).
+    importParentServers(workspace, rootConfig, servers, { onlyMissing: true });
   } else {
-    const parentCandidates = [
-      join(workspace, ".agents", "mcp.json"),
-      join(workspace, ".mcp.json"),
-      join(workspace, ".cursor", "mcp.json"),
-    ];
-    for (const path of parentCandidates) {
-      if (!isImportableMcpFile(path, rootConfig)) continue;
-      const parsed = readMcpJson(path);
-      if (!parsed) continue;
-      for (const [name, config] of Object.entries(parsed.mcpServers)) {
-        if (!isServerConfig(config)) {
-          console.warn(`  ⚠ Skipping "${name}" from ${path} — server config must be an object`);
-          continue;
-        }
-        if (hasLiteralCredentials(config)) {
-          console.warn(`  ⚠ Skipping "${name}" from ${path} — contains literal credentials (use \${VAR} placeholders)`);
-          continue;
-        }
-        servers[name] = config;
-      }
-    }
+    importParentServers(workspace, rootConfig, servers);
   }
 
   return servers;
