@@ -142,6 +142,14 @@ describe("safeSymlink", () => {
     const ok = safeSymlink("target", join(tmp.dir, "link"), { quiet: true });
     assert.equal(ok, false);
   });
+  it("replaces regular file with symlink when replace is true", () => {
+    tmp = makeTmpDir();
+    writeFileSync(join(tmp.dir, "target"), "x");
+    writeFileSync(join(tmp.dir, "link"), "old");
+    const ok = safeSymlink("target", join(tmp.dir, "link"), { replace: true, quiet: true });
+    assert.equal(ok, true);
+    assert.equal(isSymlink(join(tmp.dir, "link")), true);
+  });
 });
 
 describe("getSkillNames", () => {

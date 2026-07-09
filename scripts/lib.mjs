@@ -78,6 +78,7 @@ export function removeIfEmpty(dir) {
 export function safeSymlink(target, linkPath, { quiet = false, replace = false, copyFallback = true } = {}) {
   const log = quiet ? () => {} : console.log;
   const rel = relative(WORKSPACE, linkPath);
+  let fileBackup = null;
 
   if (isSymlink(linkPath)) {
     const existing = readlinkSync(linkPath);
@@ -91,6 +92,7 @@ export function safeSymlink(target, linkPath, { quiet = false, replace = false, 
   } else if (existsSync(linkPath)) {
     if (replace && isFile(linkPath)) {
       console.warn(`  ⚠ ${rel} is a regular file — replacing with symlink`);
+      fileBackup = readFileSync(linkPath);
       rmSync(linkPath, { force: true });
     } else if (replace && isRealDir(linkPath)) {
       console.warn(`  ⚠ ${rel} is a directory — skipping`);
@@ -103,28 +105,42 @@ export function safeSymlink(target, linkPath, { quiet = false, replace = false, 
 
   ensureDir(dirname(resolve(linkPath)));
 
+  const restoreFileBackup = () => {
+    if (fileBackup === null) return false;
+    try {
+      writeFileSync(linkPath, fileBackup);
+      console.warn(`  ⚠ Restored ${rel} after symlink failure`);
+      return true;
+    } catch {
+      console.error(`  ✗ Could not restore ${rel} after symlink failure`);
+      return false;
+    }
+  };
+
   try {
     symlinkSync(target, linkPath, SYMLINK_TYPE);
     log(`  ✓ ${rel} → ${target}`);
     return true;
   } catch {
+    if (copyFallback) {
+      const absTarget = resolve(dirname(resolve(linkPath)), target);
+      try {
+        if (lstatSync(absTarget).isDirectory()) {
+          cpSync(absTarget, linkPath, { recursive: true });
+        } else {
+          copyFileSync(absTarget, linkPath);
+        }
+        console.warn(`  ⚠ Symlink failed for ${rel} — copied instead`);
+        return true;
+      } catch { /* fall through to restore */ }
+    }
+    restoreFileBackup();
     if (!copyFallback) {
       console.warn(`  ⚠ Could not create symlink at ${rel}`);
-      return false;
-    }
-    const absTarget = resolve(dirname(resolve(linkPath)), target);
-    try {
-      if (lstatSync(absTarget).isDirectory()) {
-        cpSync(absTarget, linkPath, { recursive: true });
-      } else {
-        copyFileSync(absTarget, linkPath);
-      }
-      console.warn(`  ⚠ Symlink failed for ${rel} — copied instead`);
-      return true;
-    } catch {
+    } else {
       console.error(`  ✗ Could not symlink or copy ${rel}`);
-      return false;
     }
+    return false;
   }
 }
 
