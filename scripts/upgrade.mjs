@@ -32,10 +32,14 @@ function readVersion(path) {
 }
 
 function stageGit(paths) {
-  if (!existsSync(join(REPO_DIR, ".git")) || paths.length === 0) return;
+  if (!existsSync(join(REPO_DIR, ".git")) || paths.length === 0) return false;
   try {
     execFileSync("git", ["add", ...paths], { cwd: REPO_DIR, stdio: "ignore" });
-  } catch { /* ignore */ }
+    return true;
+  } catch {
+    console.warn("⚠ Could not stage upgrade changes (git add failed).");
+    return false;
+  }
 }
 
 /**
@@ -149,8 +153,7 @@ try {
   const toStage = ["scripts/"];
   if (existsSync(join(REPO_DIR, "package-lock.json"))) toStage.push("package-lock.json");
   toStage.push("package.json", ...mcpPaths);
-  stageGit(toStage);
-  if (existsSync(join(REPO_DIR, ".git"))) {
+  if (stageGit(toStage)) {
     console.log("Staged upgrade changes — review with: git diff --cached");
   }
 } catch (err) {

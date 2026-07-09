@@ -420,6 +420,19 @@ describe("upgradeMcp", () => {
     assert.ok(codex.includes("[mcp_servers.slack]"), "imported stdio server in codex");
   });
 
+  it("preserves codex preamble when no mcp_servers section exists", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const codexToml = join(ws, "root-config", ".codex", "config.toml");
+    mkdirSync(dirname(codexToml), { recursive: true });
+    writeFileSync(codexToml, "# team settings\n\n[tool.codex]\nmodel = \"gpt-4\"\n");
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const codex = readFileSync(codexToml, "utf8");
+    assert.ok(codex.includes("[tool.codex]"), "non-MCP preamble preserved");
+    assert.ok(codex.includes("[mcp_servers.context7]"), "MCP sections emitted");
+  });
+
   it("quotes special characters in generated codex sections", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });

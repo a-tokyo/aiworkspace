@@ -10,7 +10,7 @@ import {
   existsSync, readFileSync, writeFileSync,
   mkdtempSync,
 } from "node:fs";
-import { join, dirname, resolve } from "node:path";
+import { join, dirname, resolve, relative, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import {
@@ -171,7 +171,8 @@ function serverToCodexSection(name, config) {
 
 /** Emit Codex TOML as a projection of merged JSON (preamble preserved, MCP sections regenerated). */
 function emitCodexToml(merged, existingToml = "") {
-  const preamble = existingToml.match(/^[\s\S]*?(?=^\[mcp_servers\.)/m)?.[0]?.trimEnd() ?? "";
+  const mcpMarker = existingToml.match(/^[\s\S]*?(?=^\[mcp_servers\.)/m);
+  const preamble = mcpMarker ? mcpMarker[0].trimEnd() : existingToml.trimEnd();
   const blocks = [];
   for (const [name, config] of Object.entries(merged)) {
     const block = serverToCodexSection(name, config);
@@ -213,7 +214,7 @@ export function upgradeMcp({ templateRoot, repoDir = REPO_DIR }) {
   const userServers = collectUserServers(workspace, rootConfig);
   const merged = mergeServers(templateServers, userServers);
   const changedPaths = [];
-  const rel = (p) => p.slice(repoDir.length + 1);
+  const rel = (p) => relative(repoDir, p).replaceAll("\\", "/");
 
   console.log("\n🔌 Upgrading MCP configs...\n");
 

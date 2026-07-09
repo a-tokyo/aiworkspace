@@ -419,8 +419,12 @@ export function isImportableMcpFile(path, rootConfig = ROOT_CONFIG) {
       try { resolved = realpathSync(path); } catch { resolved = resolve(dirname(path), readlinkSync(path)); }
       let rc = rootConfig;
       try { rc = realpathSync(rootConfig); } catch { /* ignore */ }
-      const inside = relative(rc, resolved);
-      if (inside === "" || !inside.startsWith("..")) return false;
+      const rcNorm = rc.endsWith(sep) ? rc.slice(0, -1) : rc;
+      const inside = resolved === rcNorm || resolved === rc
+        || (process.platform === "win32"
+          ? resolved.toLowerCase().startsWith(`${rcNorm.toLowerCase()}${sep}`)
+          : resolved.startsWith(`${rcNorm}${sep}`));
+      if (inside) return false;
     }
     return st.isFile() || st.isSymbolicLink();
   } catch {
