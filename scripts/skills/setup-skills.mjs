@@ -70,14 +70,13 @@ function mirrorRootConfig() {
     } else if (entry.isSymbolicLink()) {
       const target = readlinkSync(src);
       if (isFile(dest)) {
-        const resolvedTarget = join(dirname(src), target);
-        if (existsSync(resolvedTarget) && isFile(resolvedTarget)) {
-          const canonical = readFileSync(resolvedTarget, "utf8");
+        try {
+          const canonical = readFileSync(join(dirname(src), target), "utf8");
           const local = readFileSync(dest, "utf8");
           if (canonical !== local) {
             console.warn(`  ⚠ ${entry.name} has local edits that will be replaced by symlink to canonical`);
           }
-        }
+        } catch {}
         unlinkSync(dest);
         log(`  ↻ ${entry.name} (migrated copy → symlink)`);
       }
@@ -284,17 +283,16 @@ function cleanMirroredEntry(entry) {
         console.log(`  ✗ Removed ${entry.name}`);
       }
     } else if (isFile(dest)) {
-      const srcPath = join(ROOT_CONFIG, entry.name);
-      const resolvedTarget = join(dirname(srcPath), readlinkSync(srcPath));
-      if (existsSync(resolvedTarget) && isFile(resolvedTarget)) {
-        const canonical = readFileSync(resolvedTarget, "utf8");
+      try {
+        const srcPath = join(ROOT_CONFIG, entry.name);
+        const canonical = readFileSync(join(dirname(srcPath), readlinkSync(srcPath)), "utf8");
         if (canonical === readFileSync(dest, "utf8")) {
           unlinkSync(dest);
           console.log(`  ✗ Removed ${entry.name} (legacy copy)`);
         } else {
           console.log(`  ⚠ ${entry.name} has local edits — skipping`);
         }
-      }
+      } catch {}
     }
     return;
   }
