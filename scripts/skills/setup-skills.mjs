@@ -10,7 +10,7 @@
  * root-config/ requires no script changes.
  *
  * Mirror rules (two-level walk of root-config/):
- *   L1 files     → copy to parent root
+ *   L1 files     → symlink to parent root
  *   L1 symlinks  → symlink at parent root (same relative target)
  *   L1 dirs      → create real dir at parent root, symlink each L2 item
  *
@@ -25,7 +25,7 @@
  *   node scripts/skills/setup-skills.mjs --clean   # remove all synced items
  */
 
-import { existsSync, readdirSync, readFileSync, readlinkSync, copyFileSync, unlinkSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, readlinkSync, unlinkSync, rmSync } from "node:fs";
 import { join, resolve, relative, dirname, basename, sep } from "node:path";
 import {
   REPO_DIR, WORKSPACE, ROOT_CONFIG, CANONICAL_SKILLS,
@@ -56,9 +56,30 @@ function mirrorRootConfig() {
     const dest = join(WORKSPACE, entry.name);
 
     if (entry.isFile()) {
-      syncFile(src, dest, entry.name);
+      const relTarget = relative(dirname(dest), src);
+      if (isFile(dest)) {
+        const canonical = readFileSync(src, "utf8");
+        const local = readFileSync(dest, "utf8");
+        if (canonical !== local) {
+          console.warn(`  ⚠ ${entry.name} has local edits that will be replaced by symlink to canonical`);
+        }
+        unlinkSync(dest);
+        log(`  ↻ ${entry.name} (migrated copy → symlink)`);
+      }
+      safeSymlink(relTarget, dest, { quiet: isEnsure });
     } else if (entry.isSymbolicLink()) {
       const target = readlinkSync(src);
+      if (isFile(dest)) {
+        try {
+          const canonical = readFileSync(join(dirname(src), target), "utf8");
+          const local = readFileSync(dest, "utf8");
+          if (canonical !== local) {
+            console.warn(`  ⚠ ${entry.name} has local edits that will be replaced by symlink to canonical`);
+          }
+        } catch { /* ignore */ }
+        unlinkSync(dest);
+        log(`  ↻ ${entry.name} (migrated copy → symlink)`);
+      }
       safeSymlink(target, dest, { quiet: isEnsure });
     } else if (entry.isDirectory()) {
       if (isSymlink(dest)) { unlinkSync(dest); log(`  ✗ Replaced old symlink ${entry.name}/`); }
@@ -66,16 +87,6 @@ function mirrorRootConfig() {
       mirrorL2(src, dest);
     }
   }
-}
-
-function syncFile(src, dest, name) {
-  const content = readFileSync(src, "utf8");
-  if (existsSync(dest) && isFile(dest) && readFileSync(dest, "utf8") === content) {
-    log(`  ✓ ${name} (up to date)`);
-    return;
-  }
-  copyFileSync(src, dest);
-  log(`  ✓ ${name} → root (synced)`);
 }
 
 function mirrorL2(srcDir, destDir) {
@@ -244,24 +255,44 @@ function cleanMirroredEntry(entry) {
   if (!existsSync(dest)) return;
 
   if (entry.isFile()) {
-    if (!isFile(dest)) return;
-    const src = readFileSync(join(ROOT_CONFIG, entry.name), "utf8");
-    if (src === readFileSync(dest, "utf8")) {
-      unlinkSync(dest);
-      console.log(`  ✗ Removed ${entry.name}`);
-    } else {
-      console.log(`  ⚠ ${entry.name} has local edits — skipping`);
+    if (isSymlink(dest)) {
+      const expected = relative(dirname(dest), join(ROOT_CONFIG, entry.name));
+      const actual = readlinkSync(dest);
+      if (actual === expected || resolve(dirname(dest), actual) === resolve(dirname(dest), expected)) {
+        unlinkSync(dest);
+        console.log(`  ✗ Removed ${entry.name}`);
+      }
+    } else if (isFile(dest)) {
+      const src = readFileSync(join(ROOT_CONFIG, entry.name), "utf8");
+      if (src === readFileSync(dest, "utf8")) {
+        unlinkSync(dest);
+        console.log(`  ✗ Removed ${entry.name} (legacy copy)`);
+      } else {
+        console.log(`  ⚠ ${entry.name} has local edits — skipping`);
+      }
     }
     return;
   }
 
   if (entry.isSymbolicLink()) {
-    if (!isSymlink(dest)) return;
-    const srcTarget = readlinkSync(join(ROOT_CONFIG, entry.name));
-    const destTarget = readlinkSync(dest);
-    if (destTarget === srcTarget || resolve(WORKSPACE, destTarget) === resolve(WORKSPACE, srcTarget)) {
-      unlinkSync(dest);
-      console.log(`  ✗ Removed ${entry.name}`);
+    if (isSymlink(dest)) {
+      const srcTarget = readlinkSync(join(ROOT_CONFIG, entry.name));
+      const destTarget = readlinkSync(dest);
+      if (destTarget === srcTarget || resolve(WORKSPACE, destTarget) === resolve(WORKSPACE, srcTarget)) {
+        unlinkSync(dest);
+        console.log(`  ✗ Removed ${entry.name}`);
+      }
+    } else if (isFile(dest)) {
+      try {
+        const srcPath = join(ROOT_CONFIG, entry.name);
+        const canonical = readFileSync(join(dirname(srcPath), readlinkSync(srcPath)), "utf8");
+        if (canonical === readFileSync(dest, "utf8")) {
+          unlinkSync(dest);
+          console.log(`  ✗ Removed ${entry.name} (legacy copy)`);
+        } else {
+          console.log(`  ⚠ ${entry.name} has local edits — skipping`);
+        }
+      } catch { /* ignore */ }
     }
     return;
   }

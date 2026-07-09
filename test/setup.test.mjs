@@ -19,7 +19,70 @@ describe("setup-skills", () => {
 
     const dest = join(tmp.dir, "AGENTS.md");
     assert.ok(existsSync(dest));
+    assert.ok(lstatSync(dest).isSymbolicLink(), "AGENTS.md should be a symlink");
     assert.equal(readFileSync(dest, "utf8"), "# Test AGENTS\n");
+  });
+
+  it("migrates existing AGENTS.md copy to symlink", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const dest = join(tmp.dir, "AGENTS.md");
+    writeFileSync(dest, "# Test AGENTS\n");
+
+    runScript(setupScript(ws), ["--ensure"], { cwd: ws });
+
+    assert.ok(lstatSync(dest).isSymbolicLink(), "AGENTS.md should be migrated to symlink");
+    assert.equal(readFileSync(dest, "utf8"), "# Test AGENTS\n");
+  });
+
+  it("warns on divergent AGENTS.md copy but still migrates to symlink", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const dest = join(tmp.dir, "AGENTS.md");
+    writeFileSync(dest, "# Locally edited AGENTS\n");
+
+    const { stderr } = runScript(setupScript(ws), ["--ensure"], { cwd: ws });
+
+    assert.ok(stderr.includes("local edits"), "should warn about divergent content");
+    assert.ok(lstatSync(dest).isSymbolicLink(), "AGENTS.md should still be migrated to symlink");
+    assert.equal(readFileSync(dest, "utf8"), "# Test AGENTS\n");
+  });
+
+  it("migrates pre-existing real CLAUDE.md copy to symlink", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const claude = join(tmp.dir, "CLAUDE.md");
+    writeFileSync(claude, "# Test AGENTS\n");
+
+    runScript(setupScript(ws), ["--ensure"], { cwd: ws });
+
+    assert.ok(lstatSync(claude).isSymbolicLink(), "CLAUDE.md should be migrated to symlink");
+    assert.equal(readlinkSync(claude), "AGENTS.md");
+  });
+
+  it("warns on divergent CLAUDE.md copy but still migrates to symlink", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const claude = join(tmp.dir, "CLAUDE.md");
+    writeFileSync(claude, "# Custom CLAUDE content\n");
+
+    const { stderr } = runScript(setupScript(ws), ["--ensure"], { cwd: ws });
+
+    assert.ok(stderr.includes("local edits"), "should warn about divergent CLAUDE.md content");
+    assert.ok(lstatSync(claude).isSymbolicLink(), "CLAUDE.md should still be migrated to symlink");
+    assert.equal(readlinkSync(claude), "AGENTS.md");
+  });
+
+  it("edits via parent-root AGENTS.md update canonical", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    runScript(setupScript(ws), ["--ensure"], { cwd: ws });
+
+    const dest = join(tmp.dir, "AGENTS.md");
+    const canonical = join(ws, "root-config", "AGENTS.md");
+    writeFileSync(dest, "# Updated via symlink\n");
+
+    assert.equal(readFileSync(canonical, "utf8"), "# Updated via symlink\n");
   });
 
   it("mirrors CLAUDE.md symlink to parent root", () => {
@@ -141,6 +204,54 @@ describe("setup-skills", () => {
     rmSync(join(ws, "root-config", ".agents", "skills", "demo"), { recursive: true });
     runScript(setupScript(ws), ["--ensure"], { cwd: ws });
     assert.ok(!existsSync(join(tmp.dir, ".claude", "skills", "demo")));
+  });
+
+  it("--clean removes legacy AGENTS.md copy matching canonical", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const dest = join(tmp.dir, "AGENTS.md");
+    writeFileSync(dest, "# Test AGENTS\n");
+
+    runScript(setupScript(ws), ["--clean"], { cwd: ws });
+
+    assert.ok(!existsSync(dest), "legacy AGENTS.md copy should be removed");
+  });
+
+  it("--clean warns on locally-edited legacy AGENTS.md copy", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const dest = join(tmp.dir, "AGENTS.md");
+    writeFileSync(dest, "# Locally edited AGENTS\n");
+
+    const { stdout, stderr } = runScript(setupScript(ws), ["--clean"], { cwd: ws });
+    const output = stdout + stderr;
+
+    assert.ok(existsSync(dest), "locally-edited AGENTS.md should not be removed");
+    assert.ok(output.includes("local edits"), "should warn about local edits");
+  });
+
+  it("--clean removes legacy CLAUDE.md copy matching canonical", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const claude = join(tmp.dir, "CLAUDE.md");
+    writeFileSync(claude, "# Test AGENTS\n");
+
+    runScript(setupScript(ws), ["--clean"], { cwd: ws });
+
+    assert.ok(!existsSync(claude), "legacy CLAUDE.md copy should be removed");
+  });
+
+  it("--clean warns on locally-edited legacy CLAUDE.md copy", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const claude = join(tmp.dir, "CLAUDE.md");
+    writeFileSync(claude, "# Custom CLAUDE content\n");
+
+    const { stdout, stderr } = runScript(setupScript(ws), ["--clean"], { cwd: ws });
+    const output = stdout + stderr;
+
+    assert.ok(existsSync(claude), "locally-edited CLAUDE.md should not be removed");
+    assert.ok(output.includes("local edits"), "should warn about local edits");
   });
 
   it("--clean removes all mirrored files and symlinks", () => {
