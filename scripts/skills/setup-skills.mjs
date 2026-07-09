@@ -76,7 +76,7 @@ function mirrorRootConfig() {
           if (canonical !== local) {
             console.warn(`  ⚠ ${entry.name} has local edits that will be replaced by symlink to canonical`);
           }
-        } catch {}
+        } catch { /* ignore */ }
         unlinkSync(dest);
         log(`  ↻ ${entry.name} (migrated copy → symlink)`);
       }
@@ -292,7 +292,7 @@ function cleanMirroredEntry(entry) {
         } else {
           console.log(`  ⚠ ${entry.name} has local edits — skipping`);
         }
-      } catch {}
+      } catch { /* ignore */ }
     }
     return;
   }

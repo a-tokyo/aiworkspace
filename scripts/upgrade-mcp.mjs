@@ -98,6 +98,10 @@ function collectUserServers(workspace, rootConfig) {
           console.warn(`  ⚠ Skipping "${name}" in ${canonical} — server config must be an object`);
           continue;
         }
+        if (hasLiteralCredentials(config)) {
+          console.warn(`  ⚠ Skipping "${name}" in ${canonical} — contains literal credentials (use \${VAR} placeholders)`);
+          continue;
+        }
         servers[name] = config;
       }
     } else {

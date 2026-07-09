@@ -23,9 +23,9 @@ root-config/
 ├── .cursor/
 │   └── mcp.json        # Symlink to ../.agents/mcp.json (Cursor MCP)
 ├── .codex/
-│   └── config.toml     # Codex MCP twin (hand-maintained)
+│   └── config.toml     # Codex MCP twin (upgrade-derived from canonical)
 └── .vscode/
-    └── mcp.json        # VS Code MCP twin (hand-maintained)
+    └── mcp.json        # VS Code MCP twin (upgrade-derived from canonical)
 ```
 
 ## Supported Conventions
@@ -58,10 +58,10 @@ Add files and directories as needed — the mirror picks them up automatically.
 | `.agents/mcp.json` | Canonical MCP config (`mcpServers` schema) |
 | `.mcp.json` | Symlink to `.agents/mcp.json` — Claude Code |
 | `.cursor/mcp.json` | Symlink to `../.agents/mcp.json` — Cursor |
-| `.codex/config.toml` | Codex MCP twin (TOML, hand-maintained) |
-| `.vscode/mcp.json` | VS Code MCP twin (`servers` schema, hand-maintained) |
+| `.codex/config.toml` | Codex MCP twin (TOML, regenerated on `npm run upgrade`) |
+| `.vscode/mcp.json` | VS Code MCP twin (`servers` schema, regenerated on `npm run upgrade`) |
 
-When adding or changing a server, edit `.agents/mcp.json`, then update `.codex/config.toml` and `.vscode/mcp.json`. Claude Code and Cursor pick up changes via symlinks automatically.
+Edit `.agents/mcp.json` to add or change servers. `npm run upgrade` refreshes the Codex and VS Code twins from canonical automatically. Claude Code and Cursor pick up changes via symlinks.
 
 **Mirror all, no opt-out.** Every developer gets all tool configs (Cursor, Claude Code, Codex, VS Code). `npm install` and git hooks recreate them at the parent root — deleting a parent-root `.cursor/` or `.codex/` folder does not opt out; setup will restore it. Unused symlinks are harmless. Per-project overrides still win via nearest-wins (`<project>/.cursor/mcp.json` etc.).
 

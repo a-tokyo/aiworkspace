@@ -69,9 +69,11 @@ export function removeIfEmpty(dir) {
 }
 
 /**
- * Create a symlink. If a correct symlink already exists, no-op.
- * Falls back to copy on Windows without Developer Mode.
- * Returns true on success.
+ * Create a symlink. If a correct symlink already exists, no-op (or no-op with
+ * `replace: true`, which returns false to mean "unchanged").
+ * Falls back to copy on Windows without Developer Mode when `copyFallback` is true.
+ * Returns true when the link was created or already correct (replace: false);
+ * false when skipped, unchanged (replace: true), or failed.
  */
 export function safeSymlink(target, linkPath, { quiet = false, replace = false, copyFallback = true } = {}) {
   const log = quiet ? () => {} : console.log;

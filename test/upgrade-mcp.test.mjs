@@ -185,6 +185,28 @@ describe("upgradeMcp", () => {
     assert.ok(merged.mcpServers.github);
   });
 
+  it("skips canonical servers with literal credentials", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const canonical = join(ws, "root-config", ".agents", "mcp.json");
+    mkdirSync(dirname(canonical), { recursive: true });
+    writeFileSync(
+      canonical,
+      JSON.stringify({
+        mcpServers: {
+          safe: { type: "stdio", command: "npx", args: ["-y", "safe-mcp"] },
+          has_token: { type: "stdio", command: "npx", env: { API_KEY: "sk-secret" } },
+        },
+      }, null, 2) + "\n",
+    );
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const merged = JSON.parse(readFileSync(canonical, "utf8"));
+    assert.ok(merged.mcpServers.safe);
+    assert.ok(merged.mcpServers.context7);
+    assert.equal(merged.mcpServers.has_token, undefined);
+  });
+
   it("migrates missing parent-root servers when canonical exists", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
