@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import {
   REPO_DIR, readMcpJson, isImportableMcpFile, ensureDir, safeSymlink,
-  MCP_TEMPLATE_REL_PATHS,
+  isSymlink, isFile, MCP_TEMPLATE_REL_PATHS,
 } from "./lib.mjs";
 
 /** Materialize root-config MCP template files from git upstream into a temp dir. */
@@ -183,6 +183,18 @@ function emitCodexToml(merged, existingToml = "") {
   return (preamble ? `${preamble}\n\n` : "") + `${body}\n`;
 }
 
+/** Create MCP entry symlink; copy-fallback on Windows but only stage real symlinks. */
+function ensureMcpEntryLink(target, linkPath, label, rel, changedPaths) {
+  if (!safeSymlink(target, linkPath, { replace: true, quiet: true })) return;
+  const pathRel = rel(linkPath);
+  if (isSymlink(linkPath)) {
+    changedPaths.push(pathRel);
+    console.log(`  ✓ ${pathRel} → ${label}`);
+  } else if (isFile(linkPath)) {
+    console.log(`  ✓ ${pathRel} (copied — symlink unavailable; not staged)`);
+  }
+}
+
 /**
  * Scaffold and merge MCP configs. Returns git-relative paths that changed.
  */
@@ -234,16 +246,10 @@ export function upgradeMcp({ templateRoot, repoDir = REPO_DIR }) {
     console.log(`  ✓ ${rel(canonical)}`);
   }
 
-  if (safeSymlink(".agents/mcp.json", mcpRootSymlink, { replace: true, copyFallback: false, quiet: true })) {
-    changedPaths.push(rel(mcpRootSymlink));
-    console.log(`  ✓ ${rel(mcpRootSymlink)} → .agents/mcp.json`);
-  }
+  ensureMcpEntryLink(".agents/mcp.json", mcpRootSymlink, ".agents/mcp.json", rel, changedPaths);
 
   ensureDir(join(rootConfig, ".cursor"));
-  if (safeSymlink("../.agents/mcp.json", cursorMcp, { replace: true, copyFallback: false, quiet: true })) {
-    changedPaths.push(rel(cursorMcp));
-    console.log(`  ✓ ${rel(cursorMcp)} → ../.agents/mcp.json`);
-  }
+  ensureMcpEntryLink("../.agents/mcp.json", cursorMcp, "../.agents/mcp.json", rel, changedPaths);
 
   const templateCodex = join(templateRoot, ".codex", "config.toml");
   ensureDir(join(rootConfig, ".codex"));
