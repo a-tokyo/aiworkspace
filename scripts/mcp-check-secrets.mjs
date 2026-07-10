@@ -9,10 +9,7 @@
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import {
-  ROOT_CONFIG, readMcpJson, WORKSPACE,
-  secretVarsForMcpServer, collapseMcpAliasGroups, hasMcpSecretVar,
-} from "./lib.mjs";
+import { ROOT_CONFIG, readMcpJson, WORKSPACE, secretVarsForMcpServer } from "./lib.mjs";
 import { loadEnvLocal } from "./mcp-load-env.mjs";
 
 const path = join(ROOT_CONFIG, ".agents", "mcp.json");
@@ -32,8 +29,7 @@ const envLocalPath = join(WORKSPACE, ".env.local");
 if (!existsSync(envLocalPath)) process.exit(0);
 
 const fileEnv = loadEnvLocal(envLocalPath);
-const toCheck = collapseMcpAliasGroups(required);
-const missing = toCheck.filter((v) => !hasMcpSecretVar(v, fileEnv, process.env));
+const missing = [...required].filter((v) => !(v in fileEnv) && !process.env[v]);
 if (missing.length === 0) process.exit(0);
 
 console.warn("\n⚠ MCP secret env vars missing from .env.local:");

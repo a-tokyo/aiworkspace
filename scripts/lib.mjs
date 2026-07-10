@@ -475,11 +475,6 @@ export function isMcpLoadEnvWrapped(config) {
     && args.some((a) => typeof a === "string" && a.includes("mcp-load-env.mjs"));
 }
 
-/** Env vars that satisfy each other when checking MCP secrets (any one in group is enough). */
-export const MCP_ENV_ALIAS_GROUPS = [
-  ["GITHUB_PAT", "GITHUB_PERSONAL_ACCESS_TOKEN"],
-];
-
 export function parseOnlyVarsFromWrappedArgs(args = []) {
   const idx = args.indexOf("--only");
   if (idx !== -1 && args[idx + 1]) {
@@ -499,31 +494,5 @@ export function secretVarsForMcpServer(_name, config) {
   }
   collectMcpPlaceholders(config, vars);
   return vars;
-}
-
-/** Collapse alias groups so only one representative per group is required. */
-export function collapseMcpAliasGroups(vars) {
-  const list = [...vars];
-  const out = [];
-  const satisfied = new Set();
-  for (const v of list) {
-    const group = MCP_ENV_ALIAS_GROUPS.find((g) => g.includes(v));
-    if (group) {
-      const key = group.slice().sort().join("|");
-      if (satisfied.has(key)) continue;
-      satisfied.add(key);
-      out.push(group[0]);
-    } else {
-      out.push(v);
-    }
-  }
-  return out;
-}
-
-export function hasMcpSecretVar(varName, fileEnv, shellEnv = process.env) {
-  if (fileEnv[varName] || shellEnv[varName]) return true;
-  const group = MCP_ENV_ALIAS_GROUPS.find((g) => g.includes(varName));
-  if (!group) return false;
-  return group.some((alias) => fileEnv[alias] || shellEnv[alias]);
 }
 

@@ -24,39 +24,28 @@ BAZ="quoted"
     assert.equal(out.BAZ, "quoted");
   });
 
-  it("loadEnvLocal aliases GITHUB_PAT to GITHUB_PERSONAL_ACCESS_TOKEN", () => {
+  it("loadEnvLocal parses values from a file path", () => {
     tmp = makeTmpDir();
     const envPath = join(tmp.dir, ".env.local");
-    writeFileSync(envPath, "GITHUB_PAT=ghp_test\n");
+    writeFileSync(envPath, "MY_API_KEY=secret\n");
     const out = loadEnvLocal(envPath);
-    assert.equal(out.GITHUB_PAT, "ghp_test");
-    assert.equal(out.GITHUB_PERSONAL_ACCESS_TOKEN, "ghp_test");
+    assert.equal(out.MY_API_KEY, "secret");
   });
 
   it("--headers prints JSON authorization header", () => {
     tmp = makeTmpDir();
     const ws = join(tmp.dir, "workspace");
     mkdirSync(join(ws, "scripts"), { recursive: true });
-    cpSync(join(REAL, "..", "scripts", "lib.mjs"), join(ws, "scripts", "lib.mjs"));
     cpSync(SCRIPT, join(ws, "scripts", "mcp-load-env.mjs"));
-    writeFileSync(join(tmp.dir, ".env.local"), "GITHUB_PAT=secret-token\n");
+    writeFileSync(join(tmp.dir, ".env.local"), "MY_API_KEY=secret-token\n");
     const r = spawnSync(process.execPath, [
       join(ws, "scripts", "mcp-load-env.mjs"),
       "--headers", "Authorization",
-      "--var", "GITHUB_PAT",
+      "--var", "MY_API_KEY",
       "--prefix", "Bearer ",
     ], { encoding: "utf8" });
     assert.equal(r.status, 0, r.stderr);
     assert.deepEqual(JSON.parse(r.stdout), { Authorization: "Bearer secret-token" });
-  });
-
-  it("loadEnvLocal aliases GITHUB_PERSONAL_ACCESS_TOKEN to GITHUB_PAT", () => {
-    tmp = makeTmpDir();
-    const envPath = join(tmp.dir, ".env.local");
-    writeFileSync(envPath, "GITHUB_PERSONAL_ACCESS_TOKEN=ghp_reverse\n");
-    const out = loadEnvLocal(envPath);
-    assert.equal(out.GITHUB_PERSONAL_ACCESS_TOKEN, "ghp_reverse");
-    assert.equal(out.GITHUB_PAT, "ghp_reverse");
   });
 
   it("--only passes only requested vars to child", () => {
@@ -70,7 +59,6 @@ BAZ="quoted"
       other: process.env.OTHER_SECRET || "",
     }));\n`);
     mkdirSync(scripts, { recursive: true });
-    cpSync(join(REAL, "..", "scripts", "lib.mjs"), join(scripts, "lib.mjs"));
     cpSync(SCRIPT, join(scripts, "mcp-load-env.mjs"));
 
     const r = spawnSync(process.execPath, [
@@ -92,7 +80,6 @@ BAZ="quoted"
     writeFileSync(join(tmp.dir, ".env.local"), "TEST_MCP_SECRET=from-file\n");
     writeFileSync(child, `console.log(process.env.TEST_MCP_SECRET || "");\n`);
     mkdirSync(scripts, { recursive: true });
-    cpSync(join(REAL, "..", "scripts", "lib.mjs"), join(scripts, "lib.mjs"));
     cpSync(SCRIPT, join(scripts, "mcp-load-env.mjs"));
 
     const r = spawnSync(process.execPath, [

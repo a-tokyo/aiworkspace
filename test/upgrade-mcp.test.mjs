@@ -170,7 +170,7 @@ describe("upgradeMcp", () => {
       JSON.stringify({
         mcpServers: {
           context7: { type: "stdio", command: "node", args: ["stale-context7.js"] },
-          github: { type: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-github"] },
+          personal: { type: "stdio", command: "npx", args: ["-y", "personal-mcp"] },
         },
       }, null, 2) + "\n",
     );
@@ -179,7 +179,7 @@ describe("upgradeMcp", () => {
     const merged = JSON.parse(readFileSync(canonical, "utf8"));
     assert.equal(merged.mcpServers.context7.command, "npx");
     assert.deepEqual(merged.mcpServers.context7.args, ["-y", "@upstash/context7-mcp"]);
-    assert.ok(merged.mcpServers.github);
+    assert.ok(merged.mcpServers.personal);
   });
 
   it("skips canonical servers with literal credentials", () => {
@@ -220,7 +220,7 @@ describe("upgradeMcp", () => {
       join(tmp.dir, ".cursor", "mcp.json"),
       JSON.stringify({
         mcpServers: {
-          github: { type: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-github"] },
+          personal: { type: "stdio", command: "npx", args: ["-y", "personal-mcp"] },
           secret_server: { type: "stdio", command: "secret", env: { TOKEN: "real-token" } },
         },
       }) + "\n",
@@ -229,7 +229,7 @@ describe("upgradeMcp", () => {
     upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
     const merged = JSON.parse(readFileSync(canonical, "utf8"));
     assert.ok(merged.mcpServers.context7, "bundled server preserved");
-    assert.ok(merged.mcpServers.github, "parent-only server migrated into canonical");
+    assert.ok(merged.mcpServers.personal, "parent-only server migrated into canonical");
     assert.equal(merged.mcpServers.secret_server, undefined, "parent server with literal credentials not imported");
   });
 
@@ -241,21 +241,21 @@ describe("upgradeMcp", () => {
     writeFileSync(
       canonical,
       JSON.stringify({
-        mcpServers: { github: { type: "http", url: "https://example.com" } },
+        mcpServers: { custom: { type: "http", url: "https://example.com" } },
       }, null, 2) + "\n",
     );
     mkdirSync(join(tmp.dir, ".cursor"), { recursive: true });
     writeFileSync(
       join(tmp.dir, ".cursor", "mcp.json"),
       JSON.stringify({
-        mcpServers: { github: { type: "stdio", command: "npx", args: ["-y", "other-github"] } },
+        mcpServers: { custom: { type: "stdio", command: "npx", args: ["-y", "other-mcp"] } },
       }) + "\n",
     );
 
     upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
     const merged = JSON.parse(readFileSync(canonical, "utf8"));
-    assert.equal(merged.mcpServers.github.type, "http");
-    assert.equal(merged.mcpServers.github.url, "https://example.com");
+    assert.equal(merged.mcpServers.custom.type, "http");
+    assert.equal(merged.mcpServers.custom.url, "https://example.com");
   });
 
   it("does not import parent symlink into root-config", () => {

@@ -188,7 +188,7 @@ function collectUserServers(workspace, rootConfig) {
  * Merge template (bundled) MCP servers with user servers.
  *
  * Precedence:
- * - Servers only in `user` are preserved (e.g. a personal `github` entry).
+ * - Servers only in `user` are preserved (e.g. a personal MCP entry).
  * - Servers in `template` always win on name overlap — bundled servers like
  *   `context7` refresh from aiworkspace on `npm run upgrade`.
  *

@@ -11,7 +11,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { MCP_ENV_ALIAS_GROUPS } from "./lib.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_DIR = dirname(SCRIPT_DIR);
@@ -35,32 +34,14 @@ export function parseDotenv(content) {
   return out;
 }
 
-export function applyMcpEnvAliases(parsed) {
-  for (const group of MCP_ENV_ALIAS_GROUPS) {
-    for (const from of group) {
-      if (!parsed[from]) continue;
-      for (const to of group) {
-        if (from !== to && !parsed[to]) parsed[to] = parsed[from];
-      }
-    }
-  }
-  return parsed;
-}
-
 export function loadEnvLocal(path = ENV_LOCAL) {
   if (!existsSync(path)) return {};
-  return applyMcpEnvAliases(parseDotenv(readFileSync(path, "utf8")));
+  return parseDotenv(readFileSync(path, "utf8"));
 }
 
-export function resolveMcpEnvVar(varName, fileEnv, shellEnv = process.env) {
+function resolveEnvVar(varName, fileEnv, shellEnv = process.env) {
   if (fileEnv[varName]) return fileEnv[varName];
   if (shellEnv[varName]) return shellEnv[varName];
-  const group = MCP_ENV_ALIAS_GROUPS.find((g) => g.includes(varName));
-  if (!group) return undefined;
-  for (const alias of group) {
-    if (fileEnv[alias]) return fileEnv[alias];
-    if (shellEnv[alias]) return shellEnv[alias];
-  }
   return undefined;
 }
 
@@ -71,10 +52,10 @@ function buildChildEnv(fileEnv, only) {
     return childEnv;
   }
   for (const name of only) {
-    const val = resolveMcpEnvVar(name, fileEnv);
+    const val = resolveEnvVar(name, fileEnv);
     if (val !== undefined) childEnv[name] = val;
   }
-  return applyMcpEnvAliases(childEnv);
+  return childEnv;
 }
 
 function parseArgs(argv) {
@@ -113,7 +94,7 @@ function main() {
   const fileEnv = loadEnvLocal();
 
   if (opts.mode === "headers") {
-    const val = resolveMcpEnvVar(opts.varName, fileEnv) ?? "";
+    const val = resolveEnvVar(opts.varName, fileEnv) ?? "";
     if (!val) process.exit(0);
     const headerVal = `${opts.prefix}${val}`;
     process.stdout.write(JSON.stringify({ [opts.headerName]: headerVal }));
