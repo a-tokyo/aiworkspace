@@ -16,7 +16,8 @@ import { execFileSync } from "node:child_process";
 const PKG_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const rootPkg = JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8"));
 const VERSION = rootPkg.version;
-const REPO_URL = rootPkg.repository?.url || "https://github.com/a-tokyo/aiworkspace.git";
+const REPO_URL = (rootPkg.repository?.url || "https://github.com/a-tokyo/aiworkspace.git")
+  .replace(/^git\+/, "");
 const DEFAULT_NAME = "workspace";
 
 const B = "\x1b[1m", D = "\x1b[2m", G = "\x1b[32m", C = "\x1b[36m", Y = "\x1b[33m", R = "\x1b[31m", X = "\x1b[0m";
@@ -240,7 +241,9 @@ ${G}Done!${X} Your workspace is ready.
 
 ${B}Next steps:${X}
 
-  ${C}cd ${name}${X}
+  ${C}cd ${name} && npm install${X}
+  ${C}cd .. && cp .env.example .env.local${X}   ${D}# fill in MCP tokens${X}
+  ${D}# restart Cursor / Claude Code after editing .env.local${X}
   ${C}git remote add origin <your-repo-url>${X}
   ${C}git push -u origin main${X}
 

@@ -74,6 +74,22 @@ To override MCP for a single project, add `<project>/.cursor/mcp.json` — neare
 
 To add more servers later, edit `root-config/.agents/mcp.json` only — `npm run upgrade` regenerates the Codex and VS Code twins from canonical. See `root-config/AGENTS.md`.
 
+### 4.1 MCP secrets
+
+MCP servers that need tokens load them from **`.env.local`** at the parent workspace root. Open the **parent directory** (not a single project repo) in your editor so MCP paths resolve correctly. `npm run upgrade` wraps secret-bearing **stdio** servers with a built-in env loader — no direnv, no terminal sourcing, no extra packages.
+
+**One-time setup** (from parent workspace root):
+
+```bash
+cp .env.example .env.local   # fill in your tokens
+```
+
+Then **restart Cursor or Claude Code** (MCP reads config at startup).
+
+`.env.local` is gitignored. `.env.example` lives in `root-config/` and is symlinked to the parent root. OAuth HTTP servers (e.g. Slack) use the editor's sign-in flow — no `.env.local` entry needed.
+
+Run `npm run mcp:check-secrets` for a non-fatal hint if tokens are missing (also runs on postinstall when `.env.local` exists).
+
 ## 5. AI Agent Environment
 
 `npm install` sets up everything automatically:

@@ -34,7 +34,7 @@ git clone <your-teams-workspace-repo> workspace
 cd workspace && npm install
 ```
 
-`npm install` restores skills from the lockfile, mirrors configs to the parent root, creates skill symlinks, and installs git hooks. See [setup.md](setup.md) for the full guide.
+`npm install` restores skills from the lockfile, mirrors configs to the parent root, creates skill symlinks, and installs git hooks. See [setup.md](setup.md) for the full guide — including [MCP secrets](setup.md#41-mcp-secrets) (`cp .env.example .env.local`, restart editor).
 
 ## How It Works
 

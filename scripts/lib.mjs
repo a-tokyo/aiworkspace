@@ -9,7 +9,7 @@ import {
   unlinkSync, mkdirSync, copyFileSync, cpSync, rmSync,
   readFileSync, writeFileSync, realpathSync,
 } from "node:fs";
-import { join, resolve, relative, dirname, isAbsolute, sep } from "node:path";
+import { join, resolve, relative, dirname, isAbsolute, sep, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
 import { platform } from "node:os";
@@ -438,4 +438,92 @@ export const MCP_TEMPLATE_REL_PATHS = [
   join(".codex", "config.toml"),
   join(".vscode", "mcp.json"),
 ];
+
+// ── MCP placeholder / secret helpers ────────────────────────────────────
+
+export const MCP_PLACEHOLDER_RE = /\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}/g;
+
+export function hasMcpPlaceholder(value) {
+  if (typeof value !== "string") return false;
+  return /\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}/.test(value);
+}
+
+export function collectMcpPlaceholders(value, vars = new Set()) {
+  if (typeof value === "string") {
+    for (const m of value.matchAll(/\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}/g)) vars.add(m[1]);
+    return vars;
+  }
+  if (Array.isArray(value)) {
+    for (const v of value) collectMcpPlaceholders(v, vars);
+    return vars;
+  }
+  if (value && typeof value === "object") {
+    for (const v of Object.values(value)) collectMcpPlaceholders(v, vars);
+  }
+  return vars;
+}
+
+/** Relative path to mcp-load-env.mjs from parent workspace root (e.g. workspace/scripts/...). */
+export function mcpLoadEnvRel(repoDir = REPO_DIR) {
+  return join(basename(repoDir), "scripts", "mcp-load-env.mjs").replaceAll("\\", "/");
+}
+
+export function isMcpLoadEnvWrapped(config) {
+  if (!config || config.type !== "stdio") return false;
+  const args = config.args ?? [];
+  return config.command === "node"
+    && args.some((a) => typeof a === "string" && a.includes("mcp-load-env.mjs"));
+}
+
+/** Env vars that satisfy each other when checking MCP secrets (any one in group is enough). */
+export const MCP_ENV_ALIAS_GROUPS = [
+  ["GITHUB_PAT", "GITHUB_PERSONAL_ACCESS_TOKEN"],
+];
+
+export function parseOnlyVarsFromWrappedArgs(args = []) {
+  const idx = args.indexOf("--only");
+  if (idx !== -1 && args[idx + 1]) {
+    return args[idx + 1].split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  return null;
+}
+
+export function secretVarsForMcpServer(_name, config) {
+  const vars = new Set();
+  if (isMcpLoadEnvWrapped(config)) {
+    const fromOnly = parseOnlyVarsFromWrappedArgs(config.args ?? []);
+    if (fromOnly?.length) {
+      for (const v of fromOnly) vars.add(v);
+      return vars;
+    }
+  }
+  collectMcpPlaceholders(config, vars);
+  return vars;
+}
+
+/** Collapse alias groups so only one representative per group is required. */
+export function collapseMcpAliasGroups(vars) {
+  const list = [...vars];
+  const out = [];
+  const satisfied = new Set();
+  for (const v of list) {
+    const group = MCP_ENV_ALIAS_GROUPS.find((g) => g.includes(v));
+    if (group) {
+      const key = group.slice().sort().join("|");
+      if (satisfied.has(key)) continue;
+      satisfied.add(key);
+      out.push(group[0]);
+    } else {
+      out.push(v);
+    }
+  }
+  return out;
+}
+
+export function hasMcpSecretVar(varName, fileEnv, shellEnv = process.env) {
+  if (fileEnv[varName] || shellEnv[varName]) return true;
+  const group = MCP_ENV_ALIAS_GROUPS.find((g) => g.includes(varName));
+  if (!group) return false;
+  return group.some((alias) => fileEnv[alias] || shellEnv[alias]);
+}
 

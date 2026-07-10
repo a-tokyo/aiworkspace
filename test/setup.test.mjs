@@ -166,6 +166,17 @@ describe("setup-skills", () => {
     assert.ok(!existsSync(join(tmp.dir, "skills-lock.json")));
   });
 
+  it("mirrors .env.example to parent root", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    writeFileSync(join(ws, "root-config", ".env.example"), "GITHUB_PAT=\n");
+
+    runScript(setupScript(ws), ["--ensure"], { cwd: ws });
+
+    assert.ok(lstatSync(join(tmp.dir, ".env.example")).isSymbolicLink());
+    assert.equal(readFileSync(join(tmp.dir, ".env.example"), "utf8"), "GITHUB_PAT=\n");
+  });
+
   it("creates .agents/ at parent root with symlinked L2 entries", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });

@@ -1,6 +1,6 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, mkdirSync, unlinkSync, writeFileSync, existsSync, chmodSync, readFileSync } from "node:fs";
+import { cpSync, mkdirSync, unlinkSync, writeFileSync, existsSync, chmodSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -21,6 +21,10 @@ function seedMcpTemplate(targetRoot) {
     const dest = join(targetRoot, rel);
     mkdirSync(dirname(dest), { recursive: true });
     cpSync(from, dest);
+  }
+  const example = join(REAL, "root-config", ".env.example");
+  if (existsSync(example)) {
+    cpSync(example, join(targetRoot, ".env.example"));
   }
 }
 
@@ -197,6 +201,7 @@ describe("upgrade (npm path)", () => {
 
     const diff = spawnSync("git", ["diff", "--cached", "--name-only"], { cwd: ws, encoding: "utf8" });
     assert.ok(diff.stdout.includes("root-config/.agents/mcp.json"), "mcp.json should be staged");
+    assert.ok(existsSync(join(ws, "root-config", ".env.example")), ".env.example should be scaffolded on upgrade");
     assert.ok(existsSync(join(tmp.dir, ".mcp.json")), "parent .mcp.json should exist after setup");
   });
 });
@@ -218,12 +223,32 @@ describe("upgrade (git path and npm fallback)", () => {
     assert.ok(r.stdout.includes("2.0.0-gitfixture"), `expected upstream version, got: ${r.stdout}`);
   });
 
+  it("uses linked aiworkspace when npm update fails but package is present", () => {
+    tmp = makeTmpDir();
+    const { ws, binDir } = createConsumer(tmp.dir, { gitInit: true, npmExitCode: 1 });
+
+    writeFileSync(
+      join(ws, "node_modules", "aiworkspace", "scripts", "postinstall.mjs"),
+      "// linked-upgrade-marker\n",
+    );
+
+    const r = runUpgradeScript(ws, binDir);
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.ok(r.stdout.includes("(npm link)"), `expected npm link path, got: ${r.stdout}`);
+    assert.ok(!r.stdout.includes("(git upstream)"), `should not fall back to git, got: ${r.stdout}`);
+    assert.equal(
+      readFileSync(join(ws, "scripts", "postinstall.mjs"), "utf8"),
+      "// linked-upgrade-marker\n",
+    );
+  });
+
   it("falls back to git upstream when npm update fails", () => {
     tmp = makeTmpDir();
     const bare = seedBareUpstream(tmp.dir);
     const { ws, binDir } = createConsumer(tmp.dir, {
       gitInit: true, upstreamBare: bare, npmExitCode: 1,
     });
+    rmSync(join(ws, "node_modules", "aiworkspace", "scripts"), { recursive: true, force: true });
 
     const r = runUpgradeScript(ws, binDir);
     assert.equal(r.status, 0, r.stderr + r.stdout);

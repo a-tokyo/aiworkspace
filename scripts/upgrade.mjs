@@ -81,6 +81,19 @@ function replaceScriptsFromPackage(src, dest) {
   }
 }
 
+function upgradeViaLinkedPackage() {
+  const pkgRoot = join(REPO_DIR, "node_modules", "aiworkspace");
+  const src = join(pkgRoot, "scripts");
+  if (!existsSync(src)) return null;
+
+  replaceScriptsFromPackage(src, join(REPO_DIR, "scripts"));
+
+  const ver = readVersion(join(pkgRoot, "package.json"));
+  console.log(`Scripts updated from linked aiworkspace v${ver} (npm link).`);
+
+  return join(pkgRoot, "root-config");
+}
+
 function upgradeViaNpm() {
   const r = spawnSync("npm", ["update", "aiworkspace"], {
     cwd: REPO_DIR, stdio: "inherit", shell: process.platform === "win32",
@@ -129,6 +142,9 @@ try {
   if (hasNpmDep) {
     templateRoot = upgradeViaNpm();
     if (!templateRoot) {
+      templateRoot = upgradeViaLinkedPackage();
+    }
+    if (!templateRoot) {
       console.warn("npm upgrade failed — falling back to git upstream...");
       upgradeViaGit();
       ephemeralTemplate = true;
@@ -141,18 +157,19 @@ try {
   const scriptsLibUrl = `${pathToFileURL(join(REPO_DIR, "scripts", "lib.mjs")).href}?v=${Date.now()}`;
   const upgradeMcpUrl = `${pathToFileURL(join(REPO_DIR, "scripts", "upgrade-mcp.mjs")).href}?v=${Date.now()}`;
   const { runSetup } = await import(scriptsLibUrl);
-  const { upgradeMcp, materializeGitTemplateRoot } = await import(upgradeMcpUrl);
+  const { upgradeMcp, upgradeEnvScaffold, materializeGitTemplateRoot } = await import(upgradeMcpUrl);
 
   if (ephemeralTemplate) {
     templateRoot = materializeGitTemplateRoot();
   }
 
+  const { changedPaths: envPaths } = upgradeEnvScaffold({ templateRoot });
   const { changedPaths: mcpPaths } = upgradeMcp({ templateRoot });
   runSetup({ ensure: true });
 
   const toStage = ["scripts/"];
   if (existsSync(join(REPO_DIR, "package-lock.json"))) toStage.push("package-lock.json");
-  toStage.push("package.json", ...mcpPaths);
+  toStage.push("package.json", ...envPaths, ...mcpPaths);
   if (stageGit(toStage)) {
     console.log("Staged upgrade changes — review with: git diff --cached");
   }

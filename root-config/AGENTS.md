@@ -69,3 +69,17 @@ All tool configs are mirrored for every developer — Cursor, Claude Code, Codex
 `npm run upgrade` refreshes bundled servers from the aiworkspace template and preserves any servers you added that are not in the template. Editing a bundled server in `root-config/.agents/mcp.json` will be overwritten on the next upgrade — use per-project MCP for local overrides.
 
 On first use in a project, the tool asks you to approve the project MCP servers. Approve them to enable the tools.
+
+## MCP authentication
+
+Secret-bearing MCP servers load tokens from **`.env.local`** at the parent workspace root. `npm run upgrade` wraps stdio servers that use `${VAR}` placeholders with `<workspace-repo>/scripts/mcp-load-env.mjs` (stdlib, no extra npm deps). VS Code twins also get `envFile: "${workspaceFolder}/.env.local"` for stdio wraps and HTTP servers with placeholders.
+
+**Setup (each developer, once):**
+
+1. `cp .env.example .env.local` at the parent workspace root
+2. Fill in tokens (never commit `.env.local`)
+3. Restart Cursor / Claude Code
+
+OAuth-only servers (Slack, Atlassian) use the editor sign-in flow — not auto-generated for Codex.
+
+Check tokens: `npm run mcp:check-secrets`

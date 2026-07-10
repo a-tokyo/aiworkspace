@@ -50,3 +50,8 @@ const hooks = spawnSync("node", [join("scripts", "install-hooks.mjs")], {
   stdio: "inherit",
 });
 exitOnFail(hooks, "install-hooks.mjs");
+
+spawnSync("node", [join("scripts", "mcp-check-secrets.mjs")], {
+  cwd: REPO_DIR,
+  stdio: "inherit",
+});
