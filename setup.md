@@ -72,7 +72,7 @@ Configs are symlinked from `root-config/`:
 
 To override MCP for a single project, add `<project>/.cursor/mcp.json` — nearest-wins.
 
-To add more servers later, edit `root-config/.agents/mcp.json` and the Codex/VS Code twins — see `root-config/AGENTS.md`.
+To add more servers later, edit `root-config/.agents/mcp.json` only — `npm run upgrade` regenerates the Codex and VS Code twins from canonical. See `root-config/AGENTS.md`.
 
 ## 5. AI Agent Environment
 
