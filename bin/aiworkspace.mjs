@@ -84,7 +84,7 @@ cpSync(join(PKG_ROOT, "scripts"), join(target, "scripts"), { recursive: true });
 console.log(`  ${G}+${X} scripts/`);
 
 // Root config (AGENTS.md, README.md, bundled skills)
-cpSync(join(PKG_ROOT, "root-config"), join(target, "root-config"), { recursive: true });
+cpSync(join(PKG_ROOT, "root-config"), join(target, "root-config"), { recursive: true, dereference: false });
 mkdirSync(join(target, "root-config", ".agents", "skills"), { recursive: true });
 writeFileSync(join(target, "root-config", "skills-lock.json"), JSON.stringify({ version: 1, skills: {} }, null, 2) + "\n");
 console.log(`  ${G}+${X} root-config/`);
@@ -125,7 +125,9 @@ cd ${name} && npm install
 ├── ${name}/                            <- this repo
 │   ├── root-config/                    <- canonical source for root-level AI configs
 │   │   ├── AGENTS.md                   <- standing instructions for all AI tools
-│   │   ├── .agents/skills/             <- workspace-wide skills
+│   │   ├── .agents/
+│   │   │   ├── mcp.json                <- canonical MCP server definitions
+│   │   │   └── skills/                 <- workspace-wide skills
 │   │   └── skills-lock.json            <- lockfile for workspace-wide skills
 │   ├── .agents/skills/                 <- workspace project-specific skills
 │   ├── scripts/                        <- automation (setup, hooks, skill wrappers)

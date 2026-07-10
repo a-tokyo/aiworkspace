@@ -11,7 +11,7 @@
       "source": "a-tokyo/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/production-grade/SKILL.md",
-      "computedHash": "086a0163377cd281608338684b59a88ed2acc48b3e55ed03a8bd0d89bcbde80a"
+      "computedHash": "13f7178ab27dc7f30bbc7b5c807a22dd2035edcc4075da21780f8acd89695a6d"
     },
     "refactor": {
       "source": "github/awesome-copilot",

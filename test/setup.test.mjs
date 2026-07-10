@@ -98,6 +98,65 @@ describe("setup-skills", () => {
     assert.equal(readFileSync(claude, "utf8"), readFileSync(agents, "utf8"));
   });
 
+  it("mirrors MCP configs to parent root", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const rc = join(ws, "root-config");
+    const mcpContent = JSON.stringify({
+      mcpServers: {
+        context7: {
+          type: "stdio",
+          command: "npx",
+          args: ["-y", "@upstash/context7-mcp"],
+          env: {},
+        },
+      },
+    }, null, 2) + "\n";
+    writeFileSync(join(rc, ".agents", "mcp.json"), mcpContent);
+    symlinkSync(".agents/mcp.json", join(rc, ".mcp.json"));
+    mkdirSync(join(rc, ".cursor"), { recursive: true });
+    symlinkSync("../.agents/mcp.json", join(rc, ".cursor", "mcp.json"));
+    mkdirSync(join(rc, ".codex"), { recursive: true });
+    writeFileSync(join(rc, ".codex", "config.toml"), "[mcp_servers.context7]\ncommand = \"npx\"\n");
+    mkdirSync(join(rc, ".vscode"), { recursive: true });
+    writeFileSync(join(rc, ".vscode", "mcp.json"), '{"servers":{"context7":{}}}\n');
+
+    runScript(setupScript(ws), ["--ensure"], { cwd: ws });
+
+    const canonical = join(rc, ".agents", "mcp.json");
+    const agentsMcp = join(tmp.dir, ".agents", "mcp.json");
+    const rootMcp = join(tmp.dir, ".mcp.json");
+    const cursorMcp = join(tmp.dir, ".cursor", "mcp.json");
+    const codexToml = join(tmp.dir, ".codex", "config.toml");
+    const vscodeMcp = join(tmp.dir, ".vscode", "mcp.json");
+
+    assert.ok(lstatSync(agentsMcp).isSymbolicLink(), ".agents/mcp.json should be a symlink");
+    assert.equal(readFileSync(agentsMcp, "utf8"), mcpContent);
+    assert.ok(lstatSync(rootMcp).isSymbolicLink(), ".mcp.json should be a symlink");
+    assert.equal(readlinkSync(rootMcp), ".agents/mcp.json");
+    assert.ok(lstatSync(cursorMcp).isSymbolicLink(), ".cursor/mcp.json should be a symlink");
+    assert.equal(readFileSync(cursorMcp, "utf8"), mcpContent);
+    assert.ok(lstatSync(codexToml).isSymbolicLink(), ".codex/config.toml should be a symlink");
+    assert.ok(lstatSync(vscodeMcp).isSymbolicLink(), ".vscode/mcp.json should be a symlink");
+    assert.equal(readFileSync(rootMcp, "utf8"), readFileSync(canonical, "utf8"));
+  });
+
+  it("edits via parent-root .mcp.json update canonical", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const rc = join(ws, "root-config");
+    writeFileSync(join(rc, ".agents", "mcp.json"), '{"mcpServers":{}}\n');
+    symlinkSync(".agents/mcp.json", join(rc, ".mcp.json"));
+
+    runScript(setupScript(ws), ["--ensure"], { cwd: ws });
+
+    const dest = join(tmp.dir, ".mcp.json");
+    const canonical = join(rc, ".agents", "mcp.json");
+    writeFileSync(dest, '{"mcpServers":{"context7":{}}}\n');
+
+    assert.equal(readFileSync(canonical, "utf8"), '{"mcpServers":{"context7":{}}}\n');
+  });
+
   it("does NOT mirror README.md or skills-lock.json", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });

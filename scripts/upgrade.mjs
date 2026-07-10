@@ -5,10 +5,12 @@
  *
  * If aiworkspace is in devDependencies: npm update + copy scripts/ from the package.
  * Otherwise: git fetch upstream + checkout scripts/ (backwards-compatible fallback).
+ *
+ * After scripts update: scaffold/merge MCP configs and re-sync parent-root symlinks.
  */
 
 import { basename, dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, readFileSync, renameSync, rmSync } from "node:fs";
 
@@ -27,6 +29,17 @@ const DEFAULT_UPSTREAM = (() => {
 
 function readVersion(path) {
   try { return JSON.parse(readFileSync(path, "utf8")).version; } catch { return "?"; }
+}
+
+function stageGit(paths) {
+  if (!existsSync(join(REPO_DIR, ".git")) || paths.length === 0) return false;
+  try {
+    execFileSync("git", ["add", ...paths], { cwd: REPO_DIR, stdio: "ignore" });
+    return true;
+  } catch {
+    console.warn("⚠ Could not stage upgrade changes (git add failed).");
+    return false;
+  }
 }
 
 /**
@@ -75,26 +88,20 @@ function upgradeViaNpm() {
   if (r.signal) {
     throw new Error(`npm update was interrupted (signal: ${r.signal}).`);
   }
-  if (r.error || r.status !== 0) return false;
+  if (r.error || r.status !== 0) return null;
 
   const src = join(REPO_DIR, "node_modules", "aiworkspace", "scripts");
   if (!existsSync(src)) {
     console.warn("npm update succeeded but node_modules/aiworkspace/scripts/ is missing.");
-    return false;
+    return null;
   }
 
   replaceScriptsFromPackage(src, join(REPO_DIR, "scripts"));
 
-  const isGit = existsSync(join(REPO_DIR, ".git"));
-  if (isGit) {
-    const toStage = ["scripts/", "package.json"];
-    if (existsSync(join(REPO_DIR, "package-lock.json"))) toStage.push("package-lock.json");
-    try { execFileSync("git", ["add", ...toStage], { cwd: REPO_DIR, stdio: "ignore" }); } catch { /* ignore */ }
-  }
   const ver = readVersion(join(REPO_DIR, "node_modules", "aiworkspace", "package.json"));
-  const hint = isGit ? " Review with: git diff --cached" : "";
-  console.log(`Scripts updated from aiworkspace v${ver} (npm).${hint}`);
-  return true;
+  console.log(`Scripts updated from aiworkspace v${ver} (npm).`);
+
+  return join(REPO_DIR, "node_modules", "aiworkspace", "root-config");
 }
 
 function upgradeViaGit() {
@@ -110,20 +117,50 @@ function upgradeViaGit() {
   execFileSync("git", ["checkout", "upstream/main", "--", "scripts/"], { cwd: REPO_DIR, stdio: "inherit" });
   let ver = "?";
   try { ver = JSON.parse(git("show", "upstream/main:package.json")).version; } catch { /* ignore */ }
-  console.log(`Scripts updated from aiworkspace v${ver} (git upstream). Review with: git diff --cached`);
+  console.log(`Scripts updated from aiworkspace v${ver} (git upstream).`);
 }
+
+let templateRoot = null;
+let ephemeralTemplate = false;
 
 try {
   const hasNpmDep = pkg.devDependencies?.aiworkspace || pkg.dependencies?.aiworkspace;
+
   if (hasNpmDep) {
-    if (!upgradeViaNpm()) {
+    templateRoot = upgradeViaNpm();
+    if (!templateRoot) {
       console.warn("npm upgrade failed — falling back to git upstream...");
       upgradeViaGit();
+      ephemeralTemplate = true;
     }
   } else {
     upgradeViaGit();
+    ephemeralTemplate = true;
+  }
+
+  const scriptsLibUrl = `${pathToFileURL(join(REPO_DIR, "scripts", "lib.mjs")).href}?v=${Date.now()}`;
+  const upgradeMcpUrl = `${pathToFileURL(join(REPO_DIR, "scripts", "upgrade-mcp.mjs")).href}?v=${Date.now()}`;
+  const { runSetup } = await import(scriptsLibUrl);
+  const { upgradeMcp, materializeGitTemplateRoot } = await import(upgradeMcpUrl);
+
+  if (ephemeralTemplate) {
+    templateRoot = materializeGitTemplateRoot();
+  }
+
+  const { changedPaths: mcpPaths } = upgradeMcp({ templateRoot });
+  runSetup({ ensure: true });
+
+  const toStage = ["scripts/"];
+  if (existsSync(join(REPO_DIR, "package-lock.json"))) toStage.push("package-lock.json");
+  toStage.push("package.json", ...mcpPaths);
+  if (stageGit(toStage)) {
+    console.log("Staged upgrade changes — review with: git diff --cached");
   }
 } catch (err) {
   console.error(`Upgrade failed: ${err.message}`);
   process.exit(1);
+} finally {
+  if (ephemeralTemplate && templateRoot) {
+    rmSync(templateRoot, { recursive: true, force: true });
+  }
 }

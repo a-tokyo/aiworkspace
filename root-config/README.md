@@ -16,8 +16,16 @@ Single canonical source for AI tool configurations at the parent workspace root 
 root-config/
 ├── AGENTS.md           # Standing instructions for all AI tools
 ├── CLAUDE.md           # Symlink to AGENTS.md (Claude Code entry point)
-└── .agents/
-    └── skills/         # Shared AI agent skills (workspace-wide)
+├── .mcp.json           # Symlink to .agents/mcp.json (Claude Code MCP entry point)
+├── .agents/
+│   ├── mcp.json        # Canonical MCP server definitions
+│   └── skills/         # Shared AI agent skills (workspace-wide)
+├── .cursor/
+│   └── mcp.json        # Symlink to ../.agents/mcp.json (Cursor MCP)
+├── .codex/
+│   └── config.toml     # Codex MCP twin (upgrade-derived from canonical)
+└── .vscode/
+    └── mcp.json        # VS Code MCP twin (upgrade-derived from canonical)
 ```
 
 ## Supported Conventions
@@ -36,11 +44,28 @@ Add files and directories as needed — the mirror picks them up automatically.
 |------|---------|
 | `CLAUDE.md` | Symlink to `AGENTS.md` — Claude Code entry point |
 
-### `.agents/skills/`
+### `.agents/`
 
 | Path | Purpose |
 |------|---------|
+| `.agents/mcp.json` | Canonical MCP server definitions (shared across tools) |
 | `.agents/skills/<name>/SKILL.md` | Shared skills, available to all repos via symlinks |
+
+### MCP (Model Context Protocol)
+
+| Path | Purpose |
+|------|---------|
+| `.agents/mcp.json` | Canonical MCP config (`mcpServers` schema) |
+| `.mcp.json` | Symlink to `.agents/mcp.json` — Claude Code |
+| `.cursor/mcp.json` | Symlink to `../.agents/mcp.json` — Cursor |
+| `.codex/config.toml` | Codex MCP twin (TOML, regenerated on `npm run upgrade`) |
+| `.vscode/mcp.json` | VS Code MCP twin (`servers` schema, regenerated on `npm run upgrade`) |
+
+Edit `.agents/mcp.json` to add or change servers. `npm run upgrade` refreshes the Codex and VS Code twins from canonical automatically. Claude Code and Cursor pick up changes via symlinks (or a local copy when symlinks are unavailable — copies are not committed).
+
+**Mirror all, no opt-out.** Every developer gets all tool configs (Cursor, Claude Code, Codex, VS Code). `npm install` and git hooks recreate them at the parent root — deleting a parent-root `.cursor/` or `.codex/` folder does not opt out; setup will restore it. Unused symlinks are harmless. Per-project overrides still win via nearest-wins (`<project>/.cursor/mcp.json` etc.).
+
+**Existing workspaces:** `npm run upgrade` scaffolds missing MCP files and merges template servers (e.g. context7) with any servers you already have — bundled servers are refreshed from the template; your own servers (not shipped by aiworkspace) are preserved. Servers that exist only at the parent workspace root are migrated into canonical on upgrade if they are not already there.
 
 ### `.cursor/` (Cursor IDE)
 
@@ -78,4 +103,4 @@ npm run skills:setup
 ## Important
 
 - Parent-root files are symlinked to `root-config/` — edits persist in the canonical git-tracked source. On platforms where symlinks are unavailable (e.g. Windows without developer mode), `safeSymlink` falls back to copying and edits at the parent root will **not** persist automatically.
-- **MCP configs** (`.mcp.json`) contain tokens — not tracked here. Each developer sets them up individually.
+- **MCP configs** are tracked in `root-config/` with env-var placeholders when auth is needed; actual tokens stay local (not in git). All tool configs are mirrored for every developer — there is no per-tool opt-out.

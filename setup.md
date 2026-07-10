@@ -38,7 +38,7 @@ Your team's workspace repo is a fork of the [aiworkspace](https://github.com/a-t
 
 ## 3. GitHub CLI
 
-The GitHub MCP server uses `gh`:
+Useful for PRs, issues, and repo operations from the terminal:
 
 ```bash
 brew install gh
@@ -46,40 +46,35 @@ gh auth login     # GitHub.com → HTTPS → web browser
 gh auth status    # verify
 ```
 
-## 4. GitHub MCP Server
+## 4. MCP Servers
 
-1. Cursor Settings (`Cmd+Shift+J`) → **MCP** → **+ Add new MCP server**
-2. Name: `github`
-3. Uses your `gh` CLI auth — no extra tokens needed
+`npm install` mirrors MCP configs from `root-config/` to the parent workspace root automatically. No manual Cursor Settings setup needed.
 
-Manual config (if prompted):
+The workspace ships configs for **all major tools** — Cursor, Claude Code, Codex, and VS Code. Every developer gets all of them; there is no per-tool opt-out. Unused symlinks are harmless. `npm install` and git hooks will recreate parent-root tool dirs if removed.
 
-```json
-{
-  "mcpServers": {
-    "github": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"],
-      "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "<your-pat>" }
-    }
-  }
-}
-```
+The workspace ships with **context7** — up-to-date library and framework documentation.
 
-## 5. Other MCP Servers (Optional)
+After install:
 
-Add any others your team uses via Cursor Settings → MCP:
+1. Open `~/dev/<your-org>/` in Cursor (or your AI editor)
+2. Restart the editor if MCP servers don't appear immediately
+3. Approve context7 on first use when prompted
 
-| Server | What it gives the AI |
-|--------|---------------------|
-| Atlassian | Jira issues, Confluence docs |
-| Linear | Issues, projects |
-| Slack | Channel history, search |
-| Sentry | Error reports, stack traces |
+Configs are symlinked from `root-config/`:
 
-Verify: ask the agent "List my Jira projects" or "Search Confluence for..." to confirm connectivity.
+| Parent root | Points to |
+|-------------|-----------|
+| `.agents/mcp.json` | `workspace/root-config/.agents/mcp.json` (canonical) |
+| `.mcp.json` | `.agents/mcp.json` (Claude Code) |
+| `.cursor/mcp.json` | `../.agents/mcp.json` (Cursor) |
+| `.codex/config.toml` | `workspace/root-config/.codex/config.toml` (Codex) |
+| `.vscode/mcp.json` | `workspace/root-config/.vscode/mcp.json` (VS Code) |
 
-## 6. AI Agent Environment
+To override MCP for a single project, add `<project>/.cursor/mcp.json` — nearest-wins.
+
+To add more servers later, edit `root-config/.agents/mcp.json` only — `npm run upgrade` regenerates the Codex and VS Code twins from canonical. See `root-config/AGENTS.md`.
+
+## 5. AI Agent Environment
 
 `npm install` sets up everything automatically:
 
@@ -144,7 +139,9 @@ git commit -m "upgrade scripts from aiworkspace"
 
 New workspaces include `aiworkspace` in `devDependencies` so `npm outdated` shows when a newer template is on npm. Your team's own `version` in `package.json` stays independent.
 
-Only `scripts/` is updated (and lockfile if npm changed the devDep). Your `root-config/`, skills, and the rest of `package.json` stay yours.
+`npm run upgrade` also scaffolds MCP configs if missing and merges your existing servers with the template (bundled servers refresh from the template; your own servers are preserved), then re-syncs parent-root symlinks.
+
+Only `scripts/` is updated from the template package (and lockfile if npm changed the devDep). MCP files are merged into your `root-config/` without overwriting your custom servers. Your other `root-config/` files (AGENTS.md, rules) and skills stay yours.
 
 If you have no `aiworkspace` devDependency (older layout), upgrade uses `git fetch upstream` and checks out `scripts/` from `upstream/main` instead.
 
@@ -152,7 +149,8 @@ If you have no `aiworkspace` devDependency (older layout), upgrade uses `git fet
 
 | Problem | Fix |
 |---------|-----|
-| GitHub MCP not working | `gh auth status`, restart Cursor, check MCP server status |
+| context7 MCP not working | Ensure `npx` is available (`node -v`), restart Cursor, check MCP server status in Settings |
+| MCP configs missing at parent root | `cd workspace && npm run skills:setup`, verify `ls -la ../.agents/mcp.json` |
 | Skills not showing up | `cd workspace && npm run skills:setup`, verify `ls root-config/.agents/skills/` |
 | MCP server red/error | Click server name in Cursor Settings -> MCP for details, restart Cursor |
 | `npm install` fails on postinstall | Run `node scripts/skills/setup-skills.mjs` manually to see errors |

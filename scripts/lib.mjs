@@ -69,47 +69,78 @@ export function removeIfEmpty(dir) {
 }
 
 /**
- * Create a symlink. If a correct symlink already exists, no-op.
- * Falls back to copy on Windows without Developer Mode.
- * Returns true on success.
+ * Create a symlink. If a correct symlink already exists, no-op (or no-op with
+ * `replace: true`, which returns false to mean "unchanged").
+ * Falls back to copy on Windows without Developer Mode when `copyFallback` is true.
+ * Returns true when the link was created or already correct (replace: false);
+ * false when skipped, unchanged (replace: true), or failed.
  */
-export function safeSymlink(target, linkPath, { quiet = false } = {}) {
+export function safeSymlink(target, linkPath, { quiet = false, replace = false, copyFallback = true } = {}) {
   const log = quiet ? () => {} : console.log;
   const rel = relative(WORKSPACE, linkPath);
+  let fileBackup = null;
 
   if (isSymlink(linkPath)) {
     const existing = readlinkSync(linkPath);
     const linkDir = dirname(resolve(linkPath));
     if (existing === target || resolve(linkDir, existing) === resolve(linkDir, target)) {
+      if (replace) return false;
       log(`  ✓ ${rel} (exists)`);
       return true;
     }
-    unlinkSync(linkPath);
+    rmSync(linkPath, { force: true });
   } else if (existsSync(linkPath)) {
-    console.warn(`  ⚠ ${rel} exists as real file/dir — skipping`);
-    return false;
+    if (replace && isFile(linkPath)) {
+      console.warn(`  ⚠ ${rel} is a regular file — replacing with symlink`);
+      fileBackup = readFileSync(linkPath);
+      rmSync(linkPath, { force: true });
+    } else if (replace && isRealDir(linkPath)) {
+      console.warn(`  ⚠ ${rel} is a directory — skipping`);
+      return false;
+    } else {
+      console.warn(`  ⚠ ${rel} exists as real file/dir — skipping`);
+      return false;
+    }
   }
 
   ensureDir(dirname(resolve(linkPath)));
+
+  const restoreFileBackup = () => {
+    if (fileBackup === null) return false;
+    try {
+      writeFileSync(linkPath, fileBackup);
+      console.warn(`  ⚠ Restored ${rel} after symlink failure`);
+      return true;
+    } catch {
+      console.error(`  ✗ Could not restore ${rel} after symlink failure`);
+      return false;
+    }
+  };
 
   try {
     symlinkSync(target, linkPath, SYMLINK_TYPE);
     log(`  ✓ ${rel} → ${target}`);
     return true;
   } catch {
-    const absTarget = resolve(dirname(resolve(linkPath)), target);
-    try {
-      if (lstatSync(absTarget).isDirectory()) {
-        cpSync(absTarget, linkPath, { recursive: true });
-      } else {
-        copyFileSync(absTarget, linkPath);
-      }
-      console.warn(`  ⚠ Symlink failed for ${rel} — copied instead`);
-      return true;
-    } catch {
-      console.error(`  ✗ Could not symlink or copy ${rel}`);
-      return false;
+    if (copyFallback) {
+      const absTarget = resolve(dirname(resolve(linkPath)), target);
+      try {
+        if (lstatSync(absTarget).isDirectory()) {
+          cpSync(absTarget, linkPath, { recursive: true });
+        } else {
+          copyFileSync(absTarget, linkPath);
+        }
+        console.warn(`  ⚠ Symlink failed for ${rel} — copied instead`);
+        return true;
+      } catch { /* fall through to restore */ }
     }
+    restoreFileBackup();
+    if (!copyFallback) {
+      console.warn(`  ⚠ Could not create symlink at ${rel}`);
+    } else {
+      console.error(`  ✗ Could not symlink or copy ${rel}`);
+    }
+    return false;
   }
 }
 
@@ -333,9 +364,10 @@ export function extractNoSetupArg(args) {
 /**
  * Run setup-skills.mjs. Exits on failure.
  */
-export function runSetup() {
+export function runSetup({ ensure = false } = {}) {
   const script = join(REPO_DIR, "scripts", "skills", "setup-skills.mjs");
-  const result = spawnSync("node", [script], { cwd: REPO_DIR, stdio: "inherit" });
+  const args = ensure ? ["--ensure"] : [];
+  const result = spawnSync(process.execPath, [script, ...args], { cwd: REPO_DIR, stdio: "inherit" });
   if (result.error) { console.error(`Setup failed: ${result.error.message}`); process.exit(1); }
   if (result.signal) { console.error(`Setup killed by ${result.signal}`); process.exit(1); }
   if (result.status) process.exit(result.status);
@@ -354,4 +386,56 @@ export function runSkillsCli(subcommand, args, { cwd = REPO_DIR } = {}) {
   if (result.signal) { console.error(`Skills CLI killed by ${result.signal}`); process.exit(1); }
   if (result.status) process.exit(result.status);
 }
+
+// ── MCP config helpers ───────────────────────────────────────────────────
+
+/**
+ * Parse an MCP JSON file. Normalizes VS Code "servers" to mcpServers shape.
+ * Returns null on missing/invalid file.
+ */
+export function readMcpJson(path) {
+  try {
+    const raw = readFileSync(path, "utf8");
+    const data = JSON.parse(raw);
+    const isValidObj = (v) => v && typeof v === "object" && !Array.isArray(v);
+    if (isValidObj(data.mcpServers)) return { mcpServers: data.mcpServers, schema: "mcpServers" };
+    if (isValidObj(data.servers)) return { mcpServers: data.servers, schema: "servers" };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True when path is a readable MCP source for import (not a symlink into root-config).
+ */
+export function isImportableMcpFile(path, rootConfig = ROOT_CONFIG) {
+  if (!existsSync(path)) return false;
+  try {
+    const st = lstatSync(path);
+    if (st.isDirectory()) return false;
+    if (st.isSymbolicLink()) {
+      let resolved;
+      try { resolved = realpathSync(path); } catch { resolved = resolve(dirname(path), readlinkSync(path)); }
+      let rc = rootConfig;
+      try { rc = realpathSync(rootConfig); } catch { /* ignore */ }
+      const rcNorm = rc.endsWith(sep) ? rc.slice(0, -1) : rc;
+      const inside = resolved === rcNorm || resolved === rc
+        || (process.platform === "win32"
+          ? resolved.toLowerCase().startsWith(`${rcNorm.toLowerCase()}${sep}`)
+          : resolved.startsWith(`${rcNorm}${sep}`));
+      if (inside) return false;
+    }
+    return st.isFile() || st.isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+// MCP template paths relative to root-config/
+export const MCP_TEMPLATE_REL_PATHS = [
+  join(".agents", "mcp.json"),
+  join(".codex", "config.toml"),
+  join(".vscode", "mcp.json"),
+];
 

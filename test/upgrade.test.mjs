@@ -1,6 +1,6 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, mkdirSync, unlinkSync, writeFileSync, existsSync, chmodSync } from "node:fs";
+import { cpSync, mkdirSync, unlinkSync, writeFileSync, existsSync, chmodSync, readFileSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -8,6 +8,21 @@ import { makeTmpDir } from "./helpers.mjs";
 
 const REAL = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const IS_WIN = process.platform === "win32";
+
+function seedMcpTemplate(targetRoot) {
+  const src = join(REAL, "root-config");
+  for (const rel of [
+    join(".agents", "mcp.json"),
+    join(".codex", "config.toml"),
+    join(".vscode", "mcp.json"),
+  ]) {
+    const from = join(src, rel);
+    if (!existsSync(from)) continue;
+    const dest = join(targetRoot, rel);
+    mkdirSync(dirname(dest), { recursive: true });
+    cpSync(from, dest);
+  }
+}
 
 function runUpgradeScript(ws, binDir) {
   return spawnSync(process.execPath, [join("scripts", "upgrade.mjs")], {
@@ -29,6 +44,7 @@ function createConsumer(parentDir, {
   mkdirSync(binDir, { recursive: true });
 
   cpSync(join(REAL, "scripts"), join(ws, "scripts"), { recursive: true });
+  mkdirSync(join(ws, "root-config", ".agents", "skills"), { recursive: true });
 
   if (devDep) {
     const nmAiws = join(ws, "node_modules", "aiworkspace");
@@ -38,6 +54,7 @@ function createConsumer(parentDir, {
       join(nmAiws, "package.json"),
       JSON.stringify({ name: "aiworkspace", version: "9.9.9-test" }) + "\n",
     );
+    seedMcpTemplate(join(nmAiws, "root-config"));
   }
 
   const pkgJson = { name: "consumer-ws", private: true };
@@ -70,6 +87,7 @@ function seedBareUpstream(parentDir) {
   const bare = resolve(join(parentDir, "upstream.git"));
   mkdirSync(work, { recursive: true });
   cpSync(join(REAL, "scripts"), join(work, "scripts"), { recursive: true });
+  seedMcpTemplate(join(work, "root-config"));
   writeFileSync(
     join(work, "package.json"),
     `${JSON.stringify({ name: "aiworkspace", version: "2.0.0-gitfixture" })}\n`,
@@ -165,6 +183,21 @@ describe("upgrade (npm path)", () => {
     const r = runUpgradeScript(ws, binDir);
     assert.notEqual(r.status, 0, "should exit non-zero on signal");
     assert.ok(r.stderr.includes("interrupted"), `expected interrupted error, got: ${r.stderr}`);
+  });
+
+  it("scaffolds MCP configs and stages them on upgrade", () => {
+    const { ws, binDir } = make({ gitInit: true });
+
+    const r = runUpgradeScript(ws, binDir);
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+
+    const canonical = join(ws, "root-config", ".agents", "mcp.json");
+    assert.ok(existsSync(canonical), "canonical mcp.json should be created");
+    assert.ok(readFileSync(canonical, "utf8").includes("context7"));
+
+    const diff = spawnSync("git", ["diff", "--cached", "--name-only"], { cwd: ws, encoding: "utf8" });
+    assert.ok(diff.stdout.includes("root-config/.agents/mcp.json"), "mcp.json should be staged");
+    assert.ok(existsSync(join(tmp.dir, ".mcp.json")), "parent .mcp.json should exist after setup");
   });
 });
 
