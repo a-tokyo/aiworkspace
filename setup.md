@@ -72,11 +72,11 @@ Configs are symlinked from `root-config/`:
 
 To override MCP for a single project, add `<project>/.cursor/mcp.json` — nearest-wins.
 
-To add more servers later, edit `root-config/.agents/mcp.json` only — `npm run upgrade` regenerates the Codex and VS Code twins from canonical. See `root-config/AGENTS.md`.
+To add more servers later, edit `root-config/.agents/mcp.json` only — `npm run sync` regenerates the Codex and VS Code twins from canonical. See `root-config/AGENTS.md`.
 
 ### 4.1 MCP secrets
 
-MCP servers that need tokens load them from **`.env.local`** at the parent workspace root. Open the **parent directory** (not a single project repo) in your editor so MCP paths resolve correctly. `npm run upgrade` wraps secret-bearing **stdio** servers with a built-in env loader — no direnv, no terminal sourcing, no extra packages.
+MCP servers that need tokens load them from **`.env.local`** at the parent workspace root. Open the **parent directory** (not a single project repo) in your editor so MCP paths resolve correctly. `npm run sync` wraps secret-bearing **stdio** servers with a built-in env loader — no direnv, no terminal sourcing, no extra packages.
 
 **One-time setup** (from parent workspace root):
 
@@ -88,7 +88,7 @@ Then **restart Cursor or Claude Code** (MCP reads config at startup).
 
 `.env.local` is gitignored. `.env.example` lives in `root-config/` and is symlinked to the parent root. OAuth HTTP servers (e.g. Slack) use the editor's sign-in flow — no `.env.local` entry needed.
 
-Run `npm run mcp:check-secrets` for a non-fatal hint if tokens are missing (also runs on postinstall when `.env.local` exists). It also warns about HTTP servers using a Bearer `${VAR}` header — Cursor cannot expand those from `.env.local`, so prefer the server's OAuth endpoint.
+Run `npm run mcp:check-secrets` for a non-fatal hint if tokens are missing, `.env.local` is absent, or placeholders are still empty (also runs on every `postinstall`). It also warns about HTTP servers using a Bearer `${VAR}` header — Cursor cannot expand those from `.env.local`, so prefer the server's OAuth endpoint.
 
 **Codex + OAuth HTTP servers:** the generated `.codex/config.toml` sets `experimental_use_rmcp_client = true` and emits a `url` for each HTTP server. For OAuth servers, run the one-time `codex mcp login <name>` (the upgrade output lists the exact commands). Note: GitHub's Copilot MCP (`api.githubcopilot.com/mcp/`) only supports OAuth for first-party clients (Cursor, VS Code, Claude); in Codex it requires a PAT via a Bearer `${VAR}` header instead — or just use Cursor/VS Code for GitHub.
 
@@ -155,9 +155,17 @@ git diff --cached              # review what changed (both paths stage scripts/)
 git commit -m "upgrade scripts from aiworkspace"
 ```
 
+**Syncing config changes** (after editing `root-config/`, especially `.agents/mcp.json`):
+
+```bash
+npm run sync                   # regenerate MCP twins + mirror to parent root (no template bump)
+git diff --cached              # review what changed
+git commit -m "sync mcp configs"
+```
+
 New workspaces include `aiworkspace` in `devDependencies` so `npm outdated` shows when a newer template is on npm. Your team's own `version` in `package.json` stays independent.
 
-`npm run upgrade` also scaffolds MCP configs if missing and merges your existing servers with the template (bundled servers refresh from the template; your own servers are preserved), then re-syncs parent-root symlinks.
+`npm run upgrade` also chains workspace sync (MCP merge + parent-root symlinks). For MCP-only edits you do not need `upgrade` — use `sync`.
 
 Only `scripts/` is updated from the template package (and lockfile if npm changed the devDep). MCP files are merged into your `root-config/` without overwriting your custom servers. Your other `root-config/` files (AGENTS.md, rules) and skills stay yours.
 
@@ -168,7 +176,7 @@ If you have no `aiworkspace` devDependency (older layout), upgrade uses `git fet
 | Problem | Fix |
 |---------|-----|
 | context7 MCP not working | Ensure `npx` is available (`node -v`), restart Cursor, check MCP server status in Settings |
-| MCP configs missing at parent root | `cd workspace && npm run skills:setup`, verify `ls -la ../.agents/mcp.json` |
+| MCP configs missing at parent root | `cd workspace && npm run sync` (or `npm run skills:setup`), verify `ls -la ../.agents/mcp.json` |
 | Skills not showing up | `cd workspace && npm run skills:setup`, verify `ls root-config/.agents/skills/` |
 | MCP server red/error | Click server name in Cursor Settings -> MCP for details, restart Cursor |
 | `npm install` fails on postinstall | Run `node scripts/skills/setup-skills.mjs` manually to see errors |

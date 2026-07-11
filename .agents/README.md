@@ -50,6 +50,7 @@ npm run skills:update                                    # update all
 npm run skills:check                                     # check for updates
 npm run skills:find                                      # search registry
 npm run skills:setup                                     # re-sync configs and symlinks
+npm run sync                                             # regenerate MCP twins + parent-root symlinks
 npm run upgrade                                          # pull latest scripts from upstream
 ```
 

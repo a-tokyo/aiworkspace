@@ -86,11 +86,19 @@ Skills are tracked in `skills-lock.json` (source + hash). On `npm install`, they
 
 ## Upgrading
 
+**Template upgrade** — pull latest managed `scripts/` when a new aiworkspace release is published:
+
 ```bash
 npm run upgrade
 ```
 
-If `aiworkspace` is in `devDependencies`, this updates that package from npm and copies its `scripts/` into yours (your team's `version` field stays independent). Otherwise the workspace falls back to git: `upstream` remote + `upstream/main` for `scripts/`. `npx aiworkspace init` sets `upstream` automatically. See [setup.md](setup.md) for details.
+**Config sync** — after editing `root-config/` (especially `.agents/mcp.json`), regenerate MCP twins and parent-root symlinks without bumping the template:
+
+```bash
+npm run sync
+```
+
+If `aiworkspace` is in `devDependencies`, `upgrade` updates that package from npm and copies its `scripts/` into yours (your team's `version` field stays independent). Otherwise the workspace falls back to git: `upstream` remote + `upstream/main` for `scripts/`. `upgrade` chains `sync` automatically. `npx aiworkspace init` sets `upstream` automatically. See [setup.md](setup.md) for details.
 
 ## Requirements
 

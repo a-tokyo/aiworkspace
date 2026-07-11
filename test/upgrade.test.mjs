@@ -60,6 +60,7 @@ function createConsumer(parentDir, {
         name: "aiworkspace",
         version: "9.9.9-test",
         scripts: {
+          sync: "node scripts/sync.mjs",
           "mcp:check-secrets": "node scripts/mcp-check-secrets.mjs",
           test: "node --test test/*.test.mjs",
           lint: "eslint .",
@@ -105,7 +106,10 @@ function seedBareUpstream(parentDir) {
     `${JSON.stringify({
       name: "aiworkspace",
       version: "2.0.0-gitfixture",
-      scripts: { "mcp:check-secrets": "node scripts/mcp-check-secrets.mjs" },
+      scripts: {
+        sync: "node scripts/sync.mjs",
+        "mcp:check-secrets": "node scripts/mcp-check-secrets.mjs",
+      },
     })}\n`,
   );
   const gw = (...a) => execFileSync("git", a, { cwd: work, stdio: "ignore" });
@@ -142,7 +146,9 @@ describe("upgrade (npm path)", () => {
     assert.equal(r.status, 0, r.stderr + r.stdout);
     assert.ok(existsSync(join(ws, "scripts", "postinstall.mjs")), "postinstall.mjs should be restored");
     assert.ok(r.stdout.includes("9.9.9-test"), `should log version, got: ${r.stdout}`);
+    assert.ok(r.stdout.includes("Template upgraded"), `should indicate template upgrade, got: ${r.stdout}`);
     assert.ok(r.stdout.includes("(npm)"), `should indicate npm path, got: ${r.stdout}`);
+    assert.ok(r.stdout.includes("Workspace synced"), `should chain sync, got: ${r.stdout}`);
     assert.ok(!existsSync(`${join(ws, "scripts")}.upgrade-tmp`), "temp dir should be cleaned up");
     assert.ok(!existsSync(`${join(ws, "scripts")}.upgrade-backup`), "backup dir should be cleaned up");
   });
@@ -213,6 +219,11 @@ describe("upgrade (npm path)", () => {
       "node scripts/mcp-check-secrets.mjs",
       "mcp:check-secrets should be merged in",
     );
+    assert.equal(
+      pkg.scripts?.sync,
+      "node scripts/sync.mjs",
+      "sync should be merged in",
+    );
     assert.ok(!("test" in (pkg.scripts ?? {})), "package-internal test script must not be merged");
     assert.ok(!("lint" in (pkg.scripts ?? {})), "package-internal lint script must not be merged");
   });
@@ -269,6 +280,7 @@ describe("upgrade (git path and npm fallback)", () => {
     assert.equal(r.status, 0, r.stderr + r.stdout);
     assert.ok(r.stdout.includes("(git upstream)"), `expected git path, got: ${r.stdout}`);
     assert.ok(r.stdout.includes("2.0.0-gitfixture"), `expected upstream version, got: ${r.stdout}`);
+    assert.ok(r.stdout.includes("Workspace synced"), `should chain sync, got: ${r.stdout}`);
   });
 
   it("uses local node_modules package when npm update fails", () => {
@@ -284,6 +296,7 @@ describe("upgrade (git path and npm fallback)", () => {
     assert.equal(r.status, 0, r.stderr + r.stdout);
     assert.ok(r.stdout.includes("(node_modules fallback)"), `expected fallback path, got: ${r.stdout}`);
     assert.ok(!r.stdout.includes("(git upstream)"), `should not fall back to git, got: ${r.stdout}`);
+    assert.ok(r.stdout.includes("Workspace synced"), `should chain sync, got: ${r.stdout}`);
     assert.equal(
       readFileSync(join(ws, "scripts", "postinstall.mjs"), "utf8"),
       "// local-package-marker\n",

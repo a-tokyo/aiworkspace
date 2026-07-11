@@ -59,16 +59,16 @@ Add files and directories as needed — the mirror picks them up automatically.
 | `.agents/mcp.json` | Canonical MCP config (`mcpServers` schema) |
 | `.mcp.json` | Symlink to `.agents/mcp.json` — Claude Code |
 | `.cursor/mcp.json` | Symlink to `../.agents/mcp.json` — Cursor |
-| `.codex/config.toml` | Codex MCP twin (TOML, regenerated on `npm run upgrade`) |
-| `.vscode/mcp.json` | VS Code MCP twin (`servers` schema, regenerated on `npm run upgrade`) |
+| `.codex/config.toml` | Codex MCP twin (TOML, regenerated on `npm run sync`) |
+| `.vscode/mcp.json` | VS Code MCP twin (`servers` schema, regenerated on `npm run sync`) |
 
-Edit `.agents/mcp.json` to add or change servers. `npm run upgrade` refreshes the Codex and VS Code twins from canonical automatically. Claude Code and Cursor pick up changes via symlinks (or a local copy when symlinks are unavailable — copies are not committed).
+Edit `.agents/mcp.json` to add or change servers. `npm run sync` refreshes the Codex and VS Code twins from canonical automatically. Claude Code and Cursor pick up changes via symlinks (or a local copy when symlinks are unavailable — copies are not committed).
 
 **Secrets:** copy `.env.example` to `.env.local` at the parent workspace root, fill tokens, restart the editor. See `setup.md` §4.1.
 
 **Mirror all, no opt-out.** Every developer gets all tool configs (Cursor, Claude Code, Codex, VS Code). `npm install` and git hooks recreate them at the parent root — deleting a parent-root `.cursor/` or `.codex/` folder does not opt out; setup will restore it. Unused symlinks are harmless. Per-project overrides still win via nearest-wins (`<project>/.cursor/mcp.json` etc.).
 
-**Existing workspaces:** `npm run upgrade` scaffolds missing MCP files and merges template servers (e.g. context7) with any servers you already have — bundled servers are refreshed from the template; your own servers (not shipped by aiworkspace) are preserved. Servers that exist only at the parent workspace root are migrated into canonical on upgrade if they are not already there.
+**Existing workspaces:** `npm run sync` scaffolds missing MCP files and merges template servers (e.g. context7) with any servers you already have — bundled servers are refreshed from the template; your own servers (not shipped by aiworkspace) are preserved. Servers that exist only at the parent workspace root are migrated into canonical on sync if they are not already there.
 
 ### `.cursor/` (Cursor IDE)
 

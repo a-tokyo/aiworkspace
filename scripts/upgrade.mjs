@@ -6,7 +6,7 @@
  * If aiworkspace is in devDependencies: npm update + copy scripts/ from the package.
  * Otherwise: git fetch upstream + checkout scripts/ (backwards-compatible fallback).
  *
- * After scripts update: scaffold/merge MCP configs and re-sync parent-root symlinks.
+ * After scripts update: merges consumer package.json scripts and chains workspace sync.
  */
 
 import { basename, dirname, join, resolve } from "node:path";
@@ -50,7 +50,7 @@ function readTemplateScripts({ ephemeralTemplate, repoDir }) {
 }
 
 /**
- * Add missing template scripts (e.g. mcp:check-secrets) to the consumer
+ * Add missing template scripts (e.g. sync, mcp:check-secrets) to the consumer
  * package.json without overwriting existing scripts. Returns changed git paths.
  */
 function mergeConsumerPackageScripts({ templateScripts, repoDir, mergePackageScripts }) {
@@ -64,17 +64,6 @@ function mergeConsumerPackageScripts({ templateScripts, repoDir, mergePackageScr
   writeFileSync(pkgPath, JSON.stringify(consumer, null, 2) + "\n");
   for (const name of added) console.log(`  + package.json script: ${name}`);
   return { changedPaths: ["package.json"] };
-}
-
-function stageGit(paths) {
-  if (!existsSync(join(REPO_DIR, ".git")) || paths.length === 0) return false;
-  try {
-    execFileSync("git", ["add", ...paths], { cwd: REPO_DIR, stdio: "ignore" });
-    return true;
-  } catch {
-    console.warn("⚠ Could not stage upgrade changes (git add failed).");
-    return false;
-  }
 }
 
 /**
@@ -124,7 +113,7 @@ function upgradeViaLocalPackage() {
   replaceScriptsFromPackage(src, join(REPO_DIR, "scripts"));
 
   const ver = readVersion(join(pkgRoot, "package.json"));
-  console.log(`Scripts updated from aiworkspace v${ver} (node_modules fallback).`);
+  console.log(`Template upgraded to aiworkspace v${ver} (node_modules fallback).`);
 
   return join(pkgRoot, "root-config");
 }
@@ -147,7 +136,7 @@ function upgradeViaNpm() {
   replaceScriptsFromPackage(src, join(REPO_DIR, "scripts"));
 
   const ver = readVersion(join(REPO_DIR, "node_modules", "aiworkspace", "package.json"));
-  console.log(`Scripts updated from aiworkspace v${ver} (npm).`);
+  console.log(`Template upgraded to aiworkspace v${ver} (npm).`);
 
   return join(REPO_DIR, "node_modules", "aiworkspace", "root-config");
 }
@@ -165,7 +154,7 @@ function upgradeViaGit() {
   execFileSync("git", ["checkout", "upstream/main", "--", "scripts/"], { cwd: REPO_DIR, stdio: "inherit" });
   let ver = "?";
   try { ver = JSON.parse(git("show", "upstream/main:package.json")).version; } catch { /* ignore */ }
-  console.log(`Scripts updated from aiworkspace v${ver} (git upstream).`);
+  console.log(`Template upgraded to aiworkspace v${ver} (git upstream).`);
 }
 
 let templateRoot = null;
@@ -190,9 +179,11 @@ try {
   }
 
   const scriptsLibUrl = `${pathToFileURL(join(REPO_DIR, "scripts", "lib.mjs")).href}?v=${Date.now()}`;
+  const syncUrl = `${pathToFileURL(join(REPO_DIR, "scripts", "sync.mjs")).href}?v=${Date.now()}`;
   const upgradeMcpUrl = `${pathToFileURL(join(REPO_DIR, "scripts", "upgrade-mcp.mjs")).href}?v=${Date.now()}`;
-  const { runSetup, mergePackageScripts } = await import(scriptsLibUrl);
-  const { upgradeMcp, upgradeEnvScaffold, materializeGitTemplateRoot } = await import(upgradeMcpUrl);
+  const { mergePackageScripts, stageGitPaths } = await import(scriptsLibUrl);
+  const { runSync } = await import(syncUrl);
+  const { materializeGitTemplateRoot } = await import(upgradeMcpUrl);
 
   if (ephemeralTemplate) {
     templateRoot = materializeGitTemplateRoot();
@@ -202,14 +193,14 @@ try {
   const { changedPaths: pkgPaths } = mergeConsumerPackageScripts({
     templateScripts, repoDir: REPO_DIR, mergePackageScripts,
   });
-  const { changedPaths: envPaths } = upgradeEnvScaffold({ templateRoot });
-  const { changedPaths: mcpPaths } = upgradeMcp({ templateRoot });
-  runSetup({ ensure: true });
+  const { changedPaths: syncPaths } = runSync({ templateRoot });
+
+  console.log("For MCP-only changes (no template bump), use: npm run sync\n");
 
   const toStage = ["scripts/"];
   if (existsSync(join(REPO_DIR, "package-lock.json"))) toStage.push("package-lock.json");
-  toStage.push("package.json", ...pkgPaths, ...envPaths, ...mcpPaths);
-  if (stageGit(toStage)) {
+  toStage.push("package.json", ...pkgPaths, ...syncPaths);
+  if (stageGitPaths(toStage, { label: "upgrade changes" })) {
     console.log("Staged upgrade changes — review with: git diff --cached");
   }
 } catch (err) {

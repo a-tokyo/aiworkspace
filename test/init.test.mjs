@@ -52,6 +52,15 @@ describe("aiworkspace init", () => {
     assert.equal(pkg.devDependencies?.aiworkspace, `^${ROOT_PKG.version}`);
   });
 
+  it("sync script references node wrapper", () => {
+    tmp = makeTmpDir();
+    runScript(INIT_SCRIPT, ["init", "--no-install"], { cwd: tmp.dir });
+
+    const pkg = JSON.parse(readFileSync(join(tmp.dir, "workspace", "package.json"), "utf8"));
+    assert.equal(pkg.scripts.sync, "node scripts/sync.mjs");
+    assert.ok(existsSync(join(tmp.dir, "workspace", "scripts", "sync.mjs")));
+  });
+
   it("upgrade script references node wrapper", () => {
     tmp = makeTmpDir();
     runScript(INIT_SCRIPT, ["init", "--no-install"], { cwd: tmp.dir });

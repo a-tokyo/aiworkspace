@@ -151,8 +151,16 @@ npm run skills:setup                                    # re-sync configs and sy
 
 ## Upgrading
 
+**Template upgrade** (new aiworkspace release):
+
 \`\`\`bash
 npm run upgrade
+\`\`\`
+
+**Config sync** (after editing \`root-config/.agents/mcp.json\` or other root-config files):
+
+\`\`\`bash
+npm run sync
 \`\`\`
 
 ---
@@ -250,6 +258,7 @@ ${B}Next steps:${X}
 Then clone your project repos alongside ${name}/ and open the parent directory
 in Cursor (or your AI editor of choice).
 
-${D}Run ${C}npm run upgrade${D} anytime to refresh scripts (npm devDep or git upstream).${X}
+${D}Run ${C}npm run upgrade${D} to refresh scripts (npm devDep or git upstream).${X}
+${D}Run ${C}npm run sync${D} after editing root-config/ (MCP twins + parent-root symlinks).${X}
 ${D}See ${name}/setup.md for the full engineering setup guide.${X}
 `);

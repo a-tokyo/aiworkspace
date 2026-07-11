@@ -1,6 +1,6 @@
 {
   "name": "aiworkspace",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Set up and manage AI agent skills and configs for Cursor, Claude Code, Codex and more across multi-repo workspaces",
   "license": "Apache-2.0",
   "type": "module",
@@ -39,6 +39,7 @@
     "skills:create": "node scripts/skills/create-skill.mjs",
     "skills:check": "echo workspace: && skills check && echo root-config: && cd root-config && skills check",
     "postinstall": "node scripts/postinstall.mjs",
+    "sync": "node scripts/sync.mjs",
     "upgrade": "node scripts/upgrade.mjs",
     "mcp:check-secrets": "node scripts/mcp-check-secrets.mjs"
   },
