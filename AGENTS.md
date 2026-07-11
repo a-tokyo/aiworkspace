@@ -17,6 +17,7 @@ This is the `workspace/` repo — central hub for shared AI config in a multi-re
 | `npm run skills:add -- <source> --project <repo>` | Install a skill (project-only) |
 | `npm run skills:remove` | Remove a skill |
 | `npm run skills:create -- --name <name>` | Create a manual skill scaffold |
+| `npm run sync` | Regenerate MCP twins and mirror root-config to parent root |
 | `npm run upgrade` | Pull latest scripts from upstream |
 
 ## Conventions

@@ -364,10 +364,10 @@ export function extractNoSetupArg(args) {
 /**
  * Run setup-skills.mjs. Exits on failure.
  */
-export function runSetup({ ensure = false } = {}) {
-  const script = join(REPO_DIR, "scripts", "skills", "setup-skills.mjs");
+export function runSetup({ ensure = false, repoDir = REPO_DIR } = {}) {
+  const script = join(repoDir, "scripts", "skills", "setup-skills.mjs");
   const args = ensure ? ["--ensure"] : [];
-  const result = spawnSync(process.execPath, [script, ...args], { cwd: REPO_DIR, stdio: "inherit" });
+  const result = spawnSync(process.execPath, [script, ...args], { cwd: repoDir, stdio: "inherit" });
   if (result.error) { console.error(`Setup failed: ${result.error.message}`); process.exit(1); }
   if (result.signal) { console.error(`Setup killed by ${result.signal}`); process.exit(1); }
   if (result.status) process.exit(result.status);
@@ -553,5 +553,21 @@ export function mergePackageScripts(
     added.push(name);
   }
   return { scripts, added };
+}
+
+// ── git staging ──────────────────────────────────────────────────────────
+
+/**
+ * Stage changed paths in git. Returns true when staging succeeded.
+ */
+export function stageGitPaths(paths, { repoDir = REPO_DIR, label = "changes" } = {}) {
+  if (!existsSync(join(repoDir, ".git")) || paths.length === 0) return false;
+  try {
+    execFileSync("git", ["add", ...paths], { cwd: repoDir, stdio: "ignore" });
+    return true;
+  } catch {
+    console.warn(`⚠ Could not stage ${label} (git add failed).`);
+    return false;
+  }
 }
 

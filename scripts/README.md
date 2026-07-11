@@ -9,21 +9,32 @@ These scripts are managed by [aiworkspace](https://github.com/a-tokyo/aiworkspac
 | Script | Purpose |
 |--------|---------|
 | `lib.mjs` | Shared utilities (symlinks, dirs, lock files) |
+| `sync.mjs` | Regenerate MCP twins and mirror root-config to parent root |
+| `upgrade.mjs` | Pull latest scripts from aiworkspace npm package or git upstream |
+| `upgrade-mcp.mjs` | MCP merge, Codex TOML + VS Code JSON projection, symlinks |
 | `install-hooks.mjs` | Installs git hooks for post-merge/post-checkout auto-sync |
 | `skills/setup-skills.mjs` | Mirrors root-config to parent root, creates skill symlinks |
 | `skills/add-skill.mjs` | Wrapper around `skills add` with project routing and auto-setup |
 | `skills/remove-skill.mjs` | Wrapper around `skills remove` with cleanup |
 | `skills/create-skill.mjs` | Scaffolds a new manual skill directory |
 
-## Upgrading
+## Upgrading and syncing
+
+**Template upgrade** — when a new aiworkspace release is published:
 
 ```bash
 npm run upgrade
 ```
 
-If `aiworkspace` is listed in `devDependencies`, this runs `npm update aiworkspace` and copies `node_modules/aiworkspace/scripts/` into `scripts/`. That pins which published template version your scripts match (see `package-lock.json`).
+**Config sync** — after editing `root-config/` (especially `.agents/mcp.json`):
 
-If there is no `aiworkspace` dependency (older workspaces), it falls back to `git fetch upstream` and checks out `scripts/` from `upstream/main`. Your `root-config/`, skills, and team-owned `package.json` fields stay yours; only `scripts/` is replaced.
+```bash
+npm run sync
+```
+
+If `aiworkspace` is listed in `devDependencies`, `upgrade` runs `npm update aiworkspace` and copies `node_modules/aiworkspace/scripts/` into `scripts/`. That pins which published template version your scripts match (see `package-lock.json`). `upgrade` chains `sync` automatically.
+
+If there is no `aiworkspace` dependency (older workspaces), `upgrade` falls back to `git fetch upstream` and checks out `scripts/` from `upstream/main`. Your `root-config/`, skills, and team-owned `package.json` fields stay yours; only `scripts/` is replaced.
 
 ## Customizing
 

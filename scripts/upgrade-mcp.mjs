@@ -3,7 +3,7 @@
 /**
  * @managed by aiworkspace — see scripts/README.md before editing.
  *
- * upgrade-mcp.mjs — Scaffold and merge MCP configs during npm run upgrade.
+ * upgrade-mcp.mjs — Scaffold and merge MCP configs during npm run sync.
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdtempSync } from "node:fs";

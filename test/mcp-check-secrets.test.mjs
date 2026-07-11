@@ -16,6 +16,40 @@ function seedCheckScripts(ws) {
 }
 
 describe("mcp-check-secrets", () => {
+  it("warns when .env.local is missing but wrapped servers need secrets", () => {
+    tmp = makeTmpDir();
+    const ws = join(tmp.dir, "ws");
+    seedCheckScripts(ws);
+    mkdirSync(join(ws, "root-config", ".agents"), { recursive: true });
+    writeFileSync(
+      join(ws, "root-config", ".agents", "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          api: {
+            type: "stdio",
+            command: "node",
+            args: [
+              "ws/scripts/mcp-load-env.mjs",
+              "--only", "MY_API_KEY",
+              "--exec", "--", "npx", "-y", "some-mcp",
+            ],
+          },
+        },
+      }, null, 2) + "\n",
+    );
+
+    const r = spawnSync(process.execPath, [join(ws, "scripts", "mcp-check-secrets.mjs")], {
+      cwd: ws,
+      encoding: "utf8",
+      env: { ...process.env, MY_API_KEY: "" },
+    });
+    assert.equal(r.status, 0);
+    const out = `${r.stderr}${r.stdout}`;
+    assert.match(out, /\.env\.local is missing/);
+    assert.match(out, /MY_API_KEY/);
+    assert.match(out, /\.env\.example/);
+  });
+
   it("warns when wrapped server has missing --only vars in .env.local", () => {
     tmp = makeTmpDir();
     const ws = join(tmp.dir, "ws");
