@@ -1,7 +1,11 @@
 local/*
 !local/.gitkeep
+workspace/
+temp/
 node_modules
 .env
+.env.*
+!.env.example
 .DS_Store
 *.tgz
 *.log

@@ -1,6 +1,6 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, mkdirSync, unlinkSync, writeFileSync, existsSync, chmodSync, readFileSync } from "node:fs";
+import { cpSync, mkdirSync, unlinkSync, writeFileSync, existsSync, chmodSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -21,6 +21,10 @@ function seedMcpTemplate(targetRoot) {
     const dest = join(targetRoot, rel);
     mkdirSync(dirname(dest), { recursive: true });
     cpSync(from, dest);
+  }
+  const example = join(REAL, "root-config", ".env.example");
+  if (existsSync(example)) {
+    cpSync(example, join(targetRoot, ".env.example"));
   }
 }
 
@@ -52,7 +56,15 @@ function createConsumer(parentDir, {
     cpSync(join(REAL, "scripts"), join(nmAiws, "scripts"), { recursive: true });
     writeFileSync(
       join(nmAiws, "package.json"),
-      JSON.stringify({ name: "aiworkspace", version: "9.9.9-test" }) + "\n",
+      JSON.stringify({
+        name: "aiworkspace",
+        version: "9.9.9-test",
+        scripts: {
+          "mcp:check-secrets": "node scripts/mcp-check-secrets.mjs",
+          test: "node --test test/*.test.mjs",
+          lint: "eslint .",
+        },
+      }) + "\n",
     );
     seedMcpTemplate(join(nmAiws, "root-config"));
   }
@@ -90,7 +102,11 @@ function seedBareUpstream(parentDir) {
   seedMcpTemplate(join(work, "root-config"));
   writeFileSync(
     join(work, "package.json"),
-    `${JSON.stringify({ name: "aiworkspace", version: "2.0.0-gitfixture" })}\n`,
+    `${JSON.stringify({
+      name: "aiworkspace",
+      version: "2.0.0-gitfixture",
+      scripts: { "mcp:check-secrets": "node scripts/mcp-check-secrets.mjs" },
+    })}\n`,
   );
   const gw = (...a) => execFileSync("git", a, { cwd: work, stdio: "ignore" });
   gw("init");
@@ -185,6 +201,42 @@ describe("upgrade (npm path)", () => {
     assert.ok(r.stderr.includes("interrupted"), `expected interrupted error, got: ${r.stderr}`);
   });
 
+  it("merges missing template scripts into consumer package.json", () => {
+    const { ws, binDir } = make();
+
+    const r = runUpgradeScript(ws, binDir);
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+
+    const pkg = JSON.parse(readFileSync(join(ws, "package.json"), "utf8"));
+    assert.equal(
+      pkg.scripts?.["mcp:check-secrets"],
+      "node scripts/mcp-check-secrets.mjs",
+      "mcp:check-secrets should be merged in",
+    );
+    assert.ok(!("test" in (pkg.scripts ?? {})), "package-internal test script must not be merged");
+    assert.ok(!("lint" in (pkg.scripts ?? {})), "package-internal lint script must not be merged");
+  });
+
+  it("does not overwrite consumer's existing scripts on upgrade", () => {
+    const { ws, binDir } = make();
+
+    writeFileSync(
+      join(ws, "package.json"),
+      JSON.stringify({
+        name: "consumer-ws",
+        private: true,
+        devDependencies: { aiworkspace: "^0.1.0" },
+        scripts: { "mcp:check-secrets": "echo custom" },
+      }) + "\n",
+    );
+
+    const r = runUpgradeScript(ws, binDir);
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+
+    const pkg = JSON.parse(readFileSync(join(ws, "package.json"), "utf8"));
+    assert.equal(pkg.scripts["mcp:check-secrets"], "echo custom", "existing script must be preserved");
+  });
+
   it("scaffolds MCP configs and stages them on upgrade", () => {
     const { ws, binDir } = make({ gitInit: true });
 
@@ -197,6 +249,7 @@ describe("upgrade (npm path)", () => {
 
     const diff = spawnSync("git", ["diff", "--cached", "--name-only"], { cwd: ws, encoding: "utf8" });
     assert.ok(diff.stdout.includes("root-config/.agents/mcp.json"), "mcp.json should be staged");
+    assert.ok(existsSync(join(ws, "root-config", ".env.example")), ".env.example should be scaffolded on upgrade");
     assert.ok(existsSync(join(tmp.dir, ".mcp.json")), "parent .mcp.json should exist after setup");
   });
 });
@@ -218,12 +271,32 @@ describe("upgrade (git path and npm fallback)", () => {
     assert.ok(r.stdout.includes("2.0.0-gitfixture"), `expected upstream version, got: ${r.stdout}`);
   });
 
+  it("uses local node_modules package when npm update fails", () => {
+    tmp = makeTmpDir();
+    const { ws, binDir } = createConsumer(tmp.dir, { gitInit: true, npmExitCode: 1 });
+
+    writeFileSync(
+      join(ws, "node_modules", "aiworkspace", "scripts", "postinstall.mjs"),
+      "// local-package-marker\n",
+    );
+
+    const r = runUpgradeScript(ws, binDir);
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.ok(r.stdout.includes("(node_modules fallback)"), `expected fallback path, got: ${r.stdout}`);
+    assert.ok(!r.stdout.includes("(git upstream)"), `should not fall back to git, got: ${r.stdout}`);
+    assert.equal(
+      readFileSync(join(ws, "scripts", "postinstall.mjs"), "utf8"),
+      "// local-package-marker\n",
+    );
+  });
+
   it("falls back to git upstream when npm update fails", () => {
     tmp = makeTmpDir();
     const bare = seedBareUpstream(tmp.dir);
     const { ws, binDir } = createConsumer(tmp.dir, {
       gitInit: true, upstreamBare: bare, npmExitCode: 1,
     });
+    rmSync(join(ws, "node_modules", "aiworkspace", "scripts"), { recursive: true, force: true });
 
     const r = runUpgradeScript(ws, binDir);
     assert.equal(r.status, 0, r.stderr + r.stdout);

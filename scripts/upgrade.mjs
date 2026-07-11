@@ -12,7 +12,7 @@
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 
 const REPO_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(join(REPO_DIR, "package.json"), "utf8"));
@@ -29,6 +29,41 @@ const DEFAULT_UPSTREAM = (() => {
 
 function readVersion(path) {
   try { return JSON.parse(readFileSync(path, "utf8")).version; } catch { return "?"; }
+}
+
+/**
+ * Resolve the aiworkspace package's `scripts` block for the active upgrade path.
+ * npm/local paths read node_modules/aiworkspace; the git fallback reads upstream.
+ */
+function readTemplateScripts({ ephemeralTemplate, repoDir }) {
+  if (ephemeralTemplate) {
+    try {
+      const content = execFileSync(
+        "git", ["show", "upstream/main:package.json"],
+        { cwd: repoDir, encoding: "utf8", stdio: ["pipe", "pipe", "ignore"] },
+      );
+      return JSON.parse(content).scripts ?? {};
+    } catch { return {}; }
+  }
+  const pkgPath = join(repoDir, "node_modules", "aiworkspace", "package.json");
+  try { return JSON.parse(readFileSync(pkgPath, "utf8")).scripts ?? {}; } catch { return {}; }
+}
+
+/**
+ * Add missing template scripts (e.g. mcp:check-secrets) to the consumer
+ * package.json without overwriting existing scripts. Returns changed git paths.
+ */
+function mergeConsumerPackageScripts({ templateScripts, repoDir, mergePackageScripts }) {
+  const pkgPath = join(repoDir, "package.json");
+  if (!existsSync(pkgPath)) return { changedPaths: [] };
+  let consumer;
+  try { consumer = JSON.parse(readFileSync(pkgPath, "utf8")); } catch { return { changedPaths: [] }; }
+  const { scripts, added } = mergePackageScripts(consumer.scripts ?? {}, templateScripts);
+  if (added.length === 0) return { changedPaths: [] };
+  consumer.scripts = scripts;
+  writeFileSync(pkgPath, JSON.stringify(consumer, null, 2) + "\n");
+  for (const name of added) console.log(`  + package.json script: ${name}`);
+  return { changedPaths: ["package.json"] };
 }
 
 function stageGit(paths) {
@@ -81,6 +116,19 @@ function replaceScriptsFromPackage(src, dest) {
   }
 }
 
+function upgradeViaLocalPackage() {
+  const pkgRoot = join(REPO_DIR, "node_modules", "aiworkspace");
+  const src = join(pkgRoot, "scripts");
+  if (!existsSync(src)) return null;
+
+  replaceScriptsFromPackage(src, join(REPO_DIR, "scripts"));
+
+  const ver = readVersion(join(pkgRoot, "package.json"));
+  console.log(`Scripts updated from aiworkspace v${ver} (node_modules fallback).`);
+
+  return join(pkgRoot, "root-config");
+}
+
 function upgradeViaNpm() {
   const r = spawnSync("npm", ["update", "aiworkspace"], {
     cwd: REPO_DIR, stdio: "inherit", shell: process.platform === "win32",
@@ -129,6 +177,9 @@ try {
   if (hasNpmDep) {
     templateRoot = upgradeViaNpm();
     if (!templateRoot) {
+      templateRoot = upgradeViaLocalPackage();
+    }
+    if (!templateRoot) {
       console.warn("npm upgrade failed — falling back to git upstream...");
       upgradeViaGit();
       ephemeralTemplate = true;
@@ -140,19 +191,24 @@ try {
 
   const scriptsLibUrl = `${pathToFileURL(join(REPO_DIR, "scripts", "lib.mjs")).href}?v=${Date.now()}`;
   const upgradeMcpUrl = `${pathToFileURL(join(REPO_DIR, "scripts", "upgrade-mcp.mjs")).href}?v=${Date.now()}`;
-  const { runSetup } = await import(scriptsLibUrl);
-  const { upgradeMcp, materializeGitTemplateRoot } = await import(upgradeMcpUrl);
+  const { runSetup, mergePackageScripts } = await import(scriptsLibUrl);
+  const { upgradeMcp, upgradeEnvScaffold, materializeGitTemplateRoot } = await import(upgradeMcpUrl);
 
   if (ephemeralTemplate) {
     templateRoot = materializeGitTemplateRoot();
   }
 
+  const templateScripts = readTemplateScripts({ ephemeralTemplate, repoDir: REPO_DIR });
+  const { changedPaths: pkgPaths } = mergeConsumerPackageScripts({
+    templateScripts, repoDir: REPO_DIR, mergePackageScripts,
+  });
+  const { changedPaths: envPaths } = upgradeEnvScaffold({ templateRoot });
   const { changedPaths: mcpPaths } = upgradeMcp({ templateRoot });
   runSetup({ ensure: true });
 
   const toStage = ["scripts/"];
   if (existsSync(join(REPO_DIR, "package-lock.json"))) toStage.push("package-lock.json");
-  toStage.push("package.json", ...mcpPaths);
+  toStage.push("package.json", ...pkgPaths, ...envPaths, ...mcpPaths);
   if (stageGit(toStage)) {
     console.log("Staged upgrade changes — review with: git diff --cached");
   }

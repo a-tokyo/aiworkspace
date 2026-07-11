@@ -6,7 +6,7 @@ import {
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { makeTmpDir, buildFakeWorkspace, runScript } from "./helpers.mjs";
-import { upgradeMcp } from "../scripts/upgrade-mcp.mjs";
+import { upgradeMcp, upgradeEnvScaffold, toVscodeServers, applySecretTransforms, wrapStdioWithEnvLoader, mcpLoadEnvRel } from "../scripts/upgrade-mcp.mjs";
 import { readMcpJson, isImportableMcpFile } from "../scripts/lib.mjs";
 
 const REAL = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -65,7 +65,7 @@ describe("upgradeMcp", () => {
     assert.ok(lstatSync(join(ws, "root-config", ".mcp.json")).isSymbolicLink());
   });
 
-  it("keeps user github and adds context7 from template", () => {
+  it("keeps user http server and adds context7 from template", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
     const canonical = join(ws, "root-config", ".agents", "mcp.json");
@@ -74,10 +74,10 @@ describe("upgradeMcp", () => {
       canonical,
       JSON.stringify({
         mcpServers: {
-          github: {
+          api: {
             type: "http",
-            url: "https://api.githubcopilot.com/mcp/",
-            headers: { Authorization: "Bearer ${GITHUB_PAT}" },
+            url: "https://example.com/mcp",
+            headers: { Authorization: "Bearer ${API_TOKEN}" },
           },
         },
       }, null, 2) + "\n",
@@ -85,11 +85,8 @@ describe("upgradeMcp", () => {
 
     upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
     const merged = JSON.parse(readFileSync(canonical, "utf8"));
-    assert.ok(merged.mcpServers.github);
-    assert.equal(
-      merged.mcpServers.github.headers.Authorization,
-      "Bearer ${GITHUB_PAT}",
-    );
+    assert.equal(merged.mcpServers.api.type, "http");
+    assert.equal(merged.mcpServers.api.url, "https://example.com/mcp");
     assert.ok(merged.mcpServers.context7);
   });
 
@@ -173,7 +170,7 @@ describe("upgradeMcp", () => {
       JSON.stringify({
         mcpServers: {
           context7: { type: "stdio", command: "node", args: ["stale-context7.js"] },
-          github: { type: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-github"] },
+          personal: { type: "stdio", command: "npx", args: ["-y", "personal-mcp"] },
         },
       }, null, 2) + "\n",
     );
@@ -182,7 +179,7 @@ describe("upgradeMcp", () => {
     const merged = JSON.parse(readFileSync(canonical, "utf8"));
     assert.equal(merged.mcpServers.context7.command, "npx");
     assert.deepEqual(merged.mcpServers.context7.args, ["-y", "@upstash/context7-mcp"]);
-    assert.ok(merged.mcpServers.github);
+    assert.ok(merged.mcpServers.personal);
   });
 
   it("skips canonical servers with literal credentials", () => {
@@ -223,7 +220,7 @@ describe("upgradeMcp", () => {
       join(tmp.dir, ".cursor", "mcp.json"),
       JSON.stringify({
         mcpServers: {
-          github: { type: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-github"] },
+          personal: { type: "stdio", command: "npx", args: ["-y", "personal-mcp"] },
           secret_server: { type: "stdio", command: "secret", env: { TOKEN: "real-token" } },
         },
       }) + "\n",
@@ -232,7 +229,7 @@ describe("upgradeMcp", () => {
     upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
     const merged = JSON.parse(readFileSync(canonical, "utf8"));
     assert.ok(merged.mcpServers.context7, "bundled server preserved");
-    assert.ok(merged.mcpServers.github, "parent-only server migrated into canonical");
+    assert.ok(merged.mcpServers.personal, "parent-only server migrated into canonical");
     assert.equal(merged.mcpServers.secret_server, undefined, "parent server with literal credentials not imported");
   });
 
@@ -244,21 +241,21 @@ describe("upgradeMcp", () => {
     writeFileSync(
       canonical,
       JSON.stringify({
-        mcpServers: { github: { type: "http", url: "https://example.com" } },
+        mcpServers: { custom: { type: "http", url: "https://example.com" } },
       }, null, 2) + "\n",
     );
     mkdirSync(join(tmp.dir, ".cursor"), { recursive: true });
     writeFileSync(
       join(tmp.dir, ".cursor", "mcp.json"),
       JSON.stringify({
-        mcpServers: { github: { type: "stdio", command: "npx", args: ["-y", "other-github"] } },
+        mcpServers: { custom: { type: "stdio", command: "npx", args: ["-y", "other-mcp"] } },
       }) + "\n",
     );
 
     upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
     const merged = JSON.parse(readFileSync(canonical, "utf8"));
-    assert.equal(merged.mcpServers.github.type, "http");
-    assert.equal(merged.mcpServers.github.url, "https://example.com");
+    assert.equal(merged.mcpServers.custom.type, "http");
+    assert.equal(merged.mcpServers.custom.url, "https://example.com");
   });
 
   it("does not import parent symlink into root-config", () => {
@@ -433,6 +430,224 @@ describe("upgradeMcp", () => {
     assert.ok(codex.includes("[mcp_servers.context7]"), "MCP sections emitted");
   });
 
+  it("vscode twin adds envFile for wrapped stdio servers", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const canonical = join(ws, "root-config", ".agents", "mcp.json");
+    mkdirSync(dirname(canonical), { recursive: true });
+    writeFileSync(
+      canonical,
+      JSON.stringify({
+        mcpServers: {
+          api: {
+            type: "stdio",
+            command: "npx",
+            args: ["-y", "some-mcp"],
+            env: { API_KEY: "${MY_API_KEY}" },
+          },
+        },
+      }, null, 2) + "\n",
+    );
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const vscode = JSON.parse(readFileSync(join(ws, "root-config", ".vscode", "mcp.json"), "utf8"));
+    assert.equal(vscode.servers.api.envFile, "${workspaceFolder}/.env.local");
+    assert.equal(vscode.servers.api.command, "node");
+  });
+
+  it("toVscodeServers leaves ${env:VAR} unchanged", () => {
+    const out = toVscodeServers({
+      s: { env: { KEY: "${env:ALREADY}" }, headers: { Authorization: "Bearer ${TOKEN}" } },
+    });
+    assert.equal(out.s.env.KEY, "${env:ALREADY}");
+    assert.equal(out.s.headers.Authorization, "Bearer ${env:TOKEN}");
+  });
+
+  it("wraps stdio servers with env placeholders on upgrade", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const canonical = join(ws, "root-config", ".agents", "mcp.json");
+    mkdirSync(dirname(canonical), { recursive: true });
+    writeFileSync(
+      canonical,
+      JSON.stringify({
+        mcpServers: {
+          api: {
+            type: "stdio",
+            command: "npx",
+            args: ["-y", "some-mcp"],
+            env: { API_KEY: "${MY_API_KEY}" },
+          },
+        },
+      }, null, 2) + "\n",
+    );
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const merged = JSON.parse(readFileSync(canonical, "utf8")).mcpServers.api;
+    assert.equal(merged.type, "stdio");
+    assert.equal(merged.command, "node");
+    assert.ok(merged.args.some((a) => String(a).includes("mcp-load-env.mjs")));
+    assert.ok(merged.args.includes("--only"));
+
+    const codex = readFileSync(join(ws, "root-config", ".codex", "config.toml"), "utf8");
+    assert.ok(codex.includes("[mcp_servers.api]"));
+    assert.ok(codex.includes('command = "node"'));
+    assert.ok(codex.includes("mcp-load-env.mjs"));
+    assert.ok(codex.includes("[mcp_servers.context7]"), "stdio template server still emitted");
+
+    const vscode = JSON.parse(readFileSync(join(ws, "root-config", ".vscode", "mcp.json"), "utf8"));
+    assert.equal(vscode.servers.api.envFile, "${workspaceFolder}/.env.local");
+  });
+
+  it("context7 stays unwrapped when no secrets", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const ctx = JSON.parse(readFileSync(join(ws, "root-config", ".agents", "mcp.json"), "utf8"))
+      .mcpServers.context7;
+    assert.equal(ctx.command, "npx");
+    assert.ok(!ctx.args?.some((a) => String(a).includes("mcp-load-env")));
+  });
+
+  it("wrapStdioWithEnvLoader strips all placeholder env vars", () => {
+    const out = wrapStdioWithEnvLoader({
+      type: "stdio",
+      command: "npx",
+      args: ["-y", "some-mcp"],
+      env: {
+        A: "aaaaaaaaaa${X}",
+        B: "${Y}",
+        PLAIN: "literal",
+      },
+    });
+    assert.equal(out.command, "node");
+    assert.deepEqual(out.env, { PLAIN: "literal" });
+  });
+
+  it("applySecretTransforms wraps stdio servers with env placeholders", () => {
+    const out = applySecretTransforms({
+      api: {
+        type: "stdio",
+        command: "npx",
+        args: ["-y", "some-mcp"],
+        env: { API_KEY: "${MY_API_KEY}" },
+      },
+    });
+    assert.equal(out.api.command, "node");
+    assert.ok(out.api.args.some((a) => String(a).includes("mcp-load-env.mjs")));
+    assert.ok(out.api.args.includes("--only"));
+    assert.ok(out.api.args.includes("--map"));
+    assert.ok(out.api.args.includes("API_KEY:MY_API_KEY"));
+  });
+
+  it("toVscodeServers adds envFile for HTTP servers with secret placeholders", () => {
+    const out = toVscodeServers({
+      api: {
+        type: "http",
+        url: "https://example.com/mcp",
+        headers: { Authorization: "Bearer ${API_TOKEN}" },
+      },
+    });
+    assert.equal(out.api.envFile, "${workspaceFolder}/.env.local");
+  });
+
+  it("codex http projection accepts ${env:VAR} bearer syntax", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const canonical = join(ws, "root-config", ".agents", "mcp.json");
+    mkdirSync(dirname(canonical), { recursive: true });
+    writeFileSync(
+      canonical,
+      JSON.stringify({
+        mcpServers: {
+          custom: {
+            type: "http",
+            url: "https://example.com/mcp",
+            headers: { Authorization: "Bearer ${env:MY_TOKEN}" },
+          },
+        },
+      }, null, 2) + "\n",
+    );
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const codex = readFileSync(join(ws, "root-config", ".codex", "config.toml"), "utf8");
+    assert.ok(codex.includes("bearer_token_env_var = \"MY_TOKEN\""));
+  });
+
+  it("codex projects OAuth-only HTTP servers with rmcp flag and no bearer token", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const canonical = join(ws, "root-config", ".agents", "mcp.json");
+    mkdirSync(dirname(canonical), { recursive: true });
+    writeFileSync(
+      canonical,
+      JSON.stringify({
+        mcpServers: {
+          slack: { type: "http", url: "https://mcp.slack.com/mcp" },
+        },
+      }, null, 2) + "\n",
+    );
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const codex = readFileSync(join(ws, "root-config", ".codex", "config.toml"), "utf8");
+    assert.ok(codex.includes("experimental_use_rmcp_client = true"), "rmcp flag injected for HTTP");
+    assert.ok(codex.includes("[mcp_servers.slack]"), "oauth http server projected");
+    assert.ok(codex.includes('url = "https://mcp.slack.com/mcp"'), "url emitted");
+    assert.ok(!codex.includes("bearer_token_env_var"), "no bearer token for oauth-only server");
+
+    const flagIdx = codex.indexOf("experimental_use_rmcp_client");
+    const firstTableIdx = codex.search(/^\[/m);
+    assert.ok(flagIdx !== -1 && flagIdx < firstTableIdx, "flag must precede the first table");
+  });
+
+  it("codex inserts rmcp flag before existing preamble tables", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const canonical = join(ws, "root-config", ".agents", "mcp.json");
+    mkdirSync(dirname(canonical), { recursive: true });
+    writeFileSync(
+      canonical,
+      JSON.stringify({
+        mcpServers: { slack: { type: "http", url: "https://mcp.slack.com/mcp" } },
+      }, null, 2) + "\n",
+    );
+    const codexToml = join(ws, "root-config", ".codex", "config.toml");
+    mkdirSync(dirname(codexToml), { recursive: true });
+    writeFileSync(codexToml, "# team settings\n\n[tool.codex]\nmodel = \"gpt-4\"\n");
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const codex = readFileSync(codexToml, "utf8");
+    assert.ok(codex.includes("[tool.codex]"), "preamble table preserved");
+    const flagIdx = codex.indexOf("experimental_use_rmcp_client");
+    const tableIdx = codex.indexOf("[tool.codex]");
+    assert.ok(flagIdx !== -1 && flagIdx < tableIdx, "flag must precede the first preamble table");
+  });
+
+  it("codex does not add rmcp flag when there are no HTTP servers", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const codex = readFileSync(join(ws, "root-config", ".codex", "config.toml"), "utf8");
+    assert.ok(!codex.includes("experimental_use_rmcp_client"), "no rmcp flag without HTTP servers");
+  });
+
+  it("mcpLoadEnvRel derives path from repo directory name", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    assert.equal(mcpLoadEnvRel(ws), "ws/scripts/mcp-load-env.mjs");
+  });
+
+  it("upgradeEnvScaffold adds .env.example when missing", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    assert.ok(!existsSync(join(ws, "root-config", ".env.example")));
+
+    const { changedPaths } = upgradeEnvScaffold({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    assert.ok(existsSync(join(ws, "root-config", ".env.example")));
+    assert.ok(changedPaths.includes("root-config/.env.example"));
+    assert.ok(!existsSync(join(ws, "root-config", ".envrc")));
+  });
+
   it("quotes special characters in generated codex sections", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
@@ -454,9 +669,10 @@ describe("upgradeMcp", () => {
     upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
     const codex = readFileSync(join(ws, "root-config", ".codex", "config.toml"), "utf8");
     assert.ok(codex.includes('[mcp_servers."my.server"]'));
-    assert.ok(codex.includes('command = "C:\\\\tools\\\\mcp.exe"'));
-    assert.ok(codex.includes('args = ["--msg","say \\"hi\\""]'));
-    assert.ok(codex.includes('CUSTOM_MSG = "${MSG}"'));
+    assert.ok(codex.includes('command = "node"'));
+    assert.ok(codex.includes("mcp-load-env.mjs"));
+    assert.ok(codex.includes('C:\\\\tools\\\\mcp.exe"'));
+    assert.ok(codex.includes('say \\"hi\\""]'));
   });
 
   it("mirrors to parent root after upgradeMcp + setup", () => {

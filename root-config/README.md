@@ -15,6 +15,7 @@ Single canonical source for AI tool configurations at the parent workspace root 
 ```
 root-config/
 ├── AGENTS.md           # Standing instructions for all AI tools
+├── .env.example        # token template (mirrors to parent)
 ├── CLAUDE.md           # Symlink to AGENTS.md (Claude Code entry point)
 ├── .mcp.json           # Symlink to .agents/mcp.json (Claude Code MCP entry point)
 ├── .agents/
@@ -62,6 +63,8 @@ Add files and directories as needed — the mirror picks them up automatically.
 | `.vscode/mcp.json` | VS Code MCP twin (`servers` schema, regenerated on `npm run upgrade`) |
 
 Edit `.agents/mcp.json` to add or change servers. `npm run upgrade` refreshes the Codex and VS Code twins from canonical automatically. Claude Code and Cursor pick up changes via symlinks (or a local copy when symlinks are unavailable — copies are not committed).
+
+**Secrets:** copy `.env.example` to `.env.local` at the parent workspace root, fill tokens, restart the editor. See `setup.md` §4.1.
 
 **Mirror all, no opt-out.** Every developer gets all tool configs (Cursor, Claude Code, Codex, VS Code). `npm install` and git hooks recreate them at the parent root — deleting a parent-root `.cursor/` or `.codex/` folder does not opt out; setup will restore it. Unused symlinks are harmless. Per-project overrides still win via nearest-wins (`<project>/.cursor/mcp.json` etc.).
 

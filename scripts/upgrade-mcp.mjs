@@ -6,17 +6,82 @@
  * upgrade-mcp.mjs — Scaffold and merge MCP configs during npm run upgrade.
  */
 
-import {
-  existsSync, readFileSync, writeFileSync,
-  mkdtempSync,
-} from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdtempSync } from "node:fs";
 import { join, dirname, resolve, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import {
   REPO_DIR, readMcpJson, isImportableMcpFile, ensureDir, safeSymlink,
   isSymlink, isFile, MCP_TEMPLATE_REL_PATHS,
+  collectMcpPlaceholders, hasMcpPlaceholder, mcpLoadEnvRel, isMcpLoadEnvWrapped,
+  extractEnvKeyMaps,
 } from "./lib.mjs";
+
+export { mcpLoadEnvRel } from "./lib.mjs";
+
+/** @deprecated Use mcpLoadEnvRel(repoDir) — kept for tests importing the old constant shape. */
+export const MCP_LOAD_ENV_REL = mcpLoadEnvRel();
+
+const VSCODE_ENV_FILE = "${workspaceFolder}/.env.local";
+
+export function needsSecrets(config) {
+  if (!isServerConfig(config)) return false;
+  return collectMcpPlaceholders(config).size > 0;
+}
+
+export function isAlreadyWrapped(config) {
+  return isMcpLoadEnvWrapped(config);
+}
+
+export function wrapStdioWithEnvLoader(config, { repoDir = REPO_DIR } = {}) {
+  if (!isServerConfig(config) || config.type !== "stdio" || isAlreadyWrapped(config)) {
+    return config;
+  }
+  const innerCommand = config.command;
+  const innerArgs = config.args ?? [];
+  const vars = [...collectMcpPlaceholders(config)];
+  const loaderArgs = [mcpLoadEnvRel(repoDir)];
+  if (vars.length) loaderArgs.push("--only", vars.join(","));
+  for (const { childKey, sourceVar } of extractEnvKeyMaps(config.env)) {
+    loaderArgs.push("--map", `${childKey}:${sourceVar}`);
+  }
+  loaderArgs.push("--exec", "--", innerCommand, ...innerArgs);
+
+  const next = {
+    ...config,
+    type: "stdio",
+    command: "node",
+    args: loaderArgs,
+  };
+  if (next.env && Object.keys(next.env).length > 0) {
+    const env = {};
+    for (const [k, v] of Object.entries(next.env)) {
+      if (typeof v === "string" && !hasMcpPlaceholder(v)) env[k] = v;
+    }
+    next.env = Object.keys(env).length ? env : undefined;
+    if (!next.env) delete next.env;
+  }
+  return next;
+}
+
+/** Wrap stdio servers that use ${VAR} placeholders with the env loader. */
+export function applySecretTransforms(servers, { repoDir = REPO_DIR } = {}) {
+  const out = {};
+  for (const [name, config] of Object.entries(servers)) {
+    if (!isServerConfig(config)) {
+      out[name] = config;
+      continue;
+    }
+
+    let next = { ...config };
+    if (next.type === "stdio" && needsSecrets(next)) {
+      next = wrapStdioWithEnvLoader(next, { repoDir });
+    }
+
+    out[name] = next;
+  }
+  return out;
+}
 
 /** Materialize root-config MCP template files from git upstream into a temp dir. */
 export function materializeGitTemplateRoot(repoDir = REPO_DIR) {
@@ -127,7 +192,7 @@ function collectUserServers(workspace, rootConfig) {
  * Merge template (bundled) MCP servers with user servers.
  *
  * Precedence:
- * - Servers only in `user` are preserved (e.g. a personal `github` entry).
+ * - Servers only in `user` are preserved (e.g. a personal MCP entry).
  * - Servers in `template` always win on name overlap — bundled servers like
  *   `context7` refresh from aiworkspace on `npm run upgrade`.
  *
@@ -169,14 +234,104 @@ function serverToCodexSection(name, config) {
   return lines.join("\n");
 }
 
+function codexBearerVar(config) {
+  const auth = config.headers?.Authorization;
+  const m = typeof auth === "string"
+    && auth.match(/^Bearer\s+\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}$/);
+  return m ? m[1] : null;
+}
+
+/**
+ * Project an HTTP MCP server to Codex. Emits `url` for every streamable-HTTP
+ * server; adds `bearer_token_env_var` when the canonical config carries a
+ * Bearer ${VAR} header. OAuth-only servers get just `url` — Codex authenticates
+ * them via `codex mcp login <name>` (needs experimental_use_rmcp_client = true,
+ * injected into the preamble by emitCodexToml).
+ */
+function serverToCodexHttpSection(name, config) {
+  if (config.type !== "http" || !config.url) return null;
+  const lines = [
+    `[${codexServerTable(name)}]`,
+    `url = ${JSON.stringify(config.url)}`,
+  ];
+  const bearerVar = codexBearerVar(config);
+  if (bearerVar) lines.push(`bearer_token_env_var = ${JSON.stringify(bearerVar)}`);
+  return lines.join("\n");
+}
+
+const CODEX_RMCP_FLAG = "experimental_use_rmcp_client = true";
+
+/**
+ * Ensure the top-level rmcp flag is present in the Codex preamble. It must
+ * precede the first table header, so insert it before any existing table
+ * (the managed file's preamble is normally comment-only).
+ */
+function ensureCodexRmcpFlag(preamble) {
+  if (new RegExp(`^\\s*${CODEX_RMCP_FLAG.split(" ")[0]}\\s*=`, "m").test(preamble)) {
+    return preamble;
+  }
+  const lines = preamble ? preamble.split("\n") : [];
+  const tableIdx = lines.findIndex((l) => /^\s*\[/.test(l));
+  if (tableIdx === -1) {
+    return preamble ? `${preamble}\n${CODEX_RMCP_FLAG}` : CODEX_RMCP_FLAG;
+  }
+  lines.splice(tableIdx, 0, CODEX_RMCP_FLAG, "");
+  return lines.join("\n");
+}
+
+/** Transform canonical ${VAR} placeholders to VS Code ${env:VAR} syntax. */
+const VSCODE_ENV_PLACEHOLDER = /(?<!\$)\$\{(?!env:)([A-Za-z_][A-Za-z0-9_]*)\}/g;
+
+function transformVscodeValue(value) {
+  if (typeof value !== "string") return value;
+  return value.replace(VSCODE_ENV_PLACEHOLDER, "${env:$1}");
+}
+
+function transformVscodeDeep(value) {
+  if (typeof value === "string") return transformVscodeValue(value);
+  if (Array.isArray(value)) return value.map(transformVscodeDeep);
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = transformVscodeDeep(v);
+    return out;
+  }
+  return value;
+}
+
+export function toVscodeServers(merged) {
+  const out = {};
+  for (const [name, config] of Object.entries(merged)) {
+    let c = transformVscodeDeep(config);
+    const needsEnvFile = (c.type === "stdio" && isAlreadyWrapped(c))
+      || (c.type === "http" && needsSecrets(c));
+    if (needsEnvFile) {
+      c = { ...c, envFile: VSCODE_ENV_FILE };
+    }
+    out[name] = c;
+  }
+  return out;
+}
+
 /** Emit Codex TOML as a projection of merged JSON (preamble preserved, MCP sections regenerated). */
 function emitCodexToml(merged, existingToml = "") {
   const mcpMarker = existingToml.match(/^[\s\S]*?(?=^\[mcp_servers\.)/m);
-  const preamble = mcpMarker ? mcpMarker[0].trimEnd() : existingToml.trimEnd();
+  let preamble = mcpMarker ? mcpMarker[0].trimEnd() : existingToml.trimEnd();
+
+  const hasHttp = Object.values(merged).some((c) => c?.type === "http" && c.url);
+  if (hasHttp) preamble = ensureCodexRmcpFlag(preamble);
+
   const blocks = [];
+  const oauthLogin = [];
   for (const [name, config] of Object.entries(merged)) {
-    const block = serverToCodexSection(name, config);
+    const block = serverToCodexSection(name, config) ?? serverToCodexHttpSection(name, config);
     if (block) blocks.push(block);
+    if (config?.type === "http" && config.url && !codexBearerVar(config)) {
+      oauthLogin.push(name);
+    }
+  }
+  if (oauthLogin.length) {
+    const cmds = oauthLogin.map((n) => `codex mcp login ${n}`).join(", ");
+    console.log(`  ℹ Codex: run one-time OAuth login for HTTP servers — ${cmds}`);
   }
   const body = blocks.join("\n\n");
   if (!body) return preamble ? `${preamble}\n` : "";
@@ -224,7 +379,7 @@ export function upgradeMcp({ templateRoot, repoDir = REPO_DIR }) {
 
   const templateServers = templateLoad.servers;
   const userServers = collectUserServers(workspace, rootConfig);
-  const merged = mergeServers(templateServers, userServers);
+  const merged = applySecretTransforms(mergeServers(templateServers, userServers), { repoDir });
   const changedPaths = [];
   const rel = (p) => relative(repoDir, p).replaceAll("\\", "/");
 
@@ -266,7 +421,7 @@ export function upgradeMcp({ templateRoot, repoDir = REPO_DIR }) {
   }
 
   ensureDir(join(rootConfig, ".vscode"));
-  const vscodeOut = JSON.stringify({ servers: merged }, null, 2) + "\n";
+  const vscodeOut = JSON.stringify({ servers: toVscodeServers(merged) }, null, 2) + "\n";
   if (!existsSync(vscodeMcp) || readFileSync(vscodeMcp, "utf8") !== vscodeOut) {
     writeFileSync(vscodeMcp, vscodeOut);
     changedPaths.push(rel(vscodeMcp));
@@ -274,5 +429,41 @@ export function upgradeMcp({ templateRoot, repoDir = REPO_DIR }) {
   }
 
   console.log("");
+  return { changedPaths };
+}
+
+function readGitTemplateFile(repoDir, gitPath) {
+  try {
+    return execFileSync(
+      "git", ["show", `upstream/main:${gitPath}`],
+      { cwd: repoDir, encoding: "utf8", stdio: ["pipe", "pipe", "ignore"] },
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** Scaffold .env.example in root-config/ when missing. */
+export function upgradeEnvScaffold({ templateRoot, repoDir = REPO_DIR }) {
+  const changedPaths = [];
+  const rel = (p) => relative(repoDir, p).replaceAll("\\", "/");
+
+  console.log("\n🔐 Scaffolding MCP secret files...\n");
+
+  const exampleDest = join(repoDir, "root-config", ".env.example");
+  if (!existsSync(exampleDest)) {
+    const exampleSrc = templateRoot ? join(templateRoot, ".env.example") : null;
+    const content = exampleSrc && existsSync(exampleSrc)
+      ? readFileSync(exampleSrc, "utf8")
+      : readGitTemplateFile(repoDir, "root-config/.env.example");
+    if (content) {
+      writeFileSync(exampleDest, content);
+      changedPaths.push(rel(exampleDest));
+      console.log(`  ✓ ${rel(exampleDest)}`);
+    }
+  }
+
+  if (changedPaths.length === 0) console.log("  (no env scaffold changes)\n");
+  else console.log("");
   return { changedPaths };
 }

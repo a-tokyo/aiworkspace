@@ -71,6 +71,8 @@ describe("aiworkspace init", () => {
     const result = spawnSync("git", ["remote", "-v"], { cwd: ws, encoding: "utf8" });
     assert.ok(result.stdout.includes("upstream"));
     assert.ok(result.stdout.includes("aiworkspace"));
+    assert.ok(!result.stdout.includes("git+https"), "upstream URL must be plain https for git fetch");
+    assert.match(result.stdout, /upstream\s+https:\/\/github\.com\/.*aiworkspace/);
   });
 
   it("supports custom name", () => {
@@ -141,6 +143,7 @@ describe("aiworkspace init", () => {
     assert.ok(lstatSync(join(rc, ".cursor", "mcp.json")).isSymbolicLink(), ".cursor/mcp.json should be a symlink");
     assert.ok(existsSync(join(rc, ".codex", "config.toml")), "codex twin should be included");
     assert.ok(existsSync(join(rc, ".vscode", "mcp.json")), "vscode twin should be included");
+    assert.ok(existsSync(join(rc, ".env.example")), ".env.example should be in root-config");
   });
 
   it("rejects invalid names", () => {

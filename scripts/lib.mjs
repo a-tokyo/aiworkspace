@@ -9,7 +9,7 @@ import {
   unlinkSync, mkdirSync, copyFileSync, cpSync, rmSync,
   readFileSync, writeFileSync, realpathSync,
 } from "node:fs";
-import { join, resolve, relative, dirname, isAbsolute, sep } from "node:path";
+import { join, resolve, relative, dirname, isAbsolute, sep, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
 import { platform } from "node:os";
@@ -438,4 +438,120 @@ export const MCP_TEMPLATE_REL_PATHS = [
   join(".codex", "config.toml"),
   join(".vscode", "mcp.json"),
 ];
+
+// ── MCP placeholder / secret helpers ────────────────────────────────────
+
+export const MCP_PLACEHOLDER_RE = /\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}/g;
+
+export function hasMcpPlaceholder(value) {
+  if (typeof value !== "string") return false;
+  return /\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}/.test(value);
+}
+
+const SINGLE_MCP_PLACEHOLDER_RE = /^\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}$/;
+
+/** Env entries like API_KEY: "${MY_API_KEY}" need remapping when wrapping (child key ≠ source var). */
+export function extractEnvKeyMaps(env) {
+  if (!env || typeof env !== "object") return [];
+  const maps = [];
+  for (const [childKey, value] of Object.entries(env)) {
+    if (typeof value !== "string") continue;
+    const m = value.match(SINGLE_MCP_PLACEHOLDER_RE);
+    if (m && m[1] !== childKey) maps.push({ childKey, sourceVar: m[1] });
+  }
+  return maps;
+}
+
+export function collectMcpPlaceholders(value, vars = new Set()) {
+  if (typeof value === "string") {
+    for (const m of value.matchAll(/\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}/g)) vars.add(m[1]);
+    return vars;
+  }
+  if (Array.isArray(value)) {
+    for (const v of value) collectMcpPlaceholders(v, vars);
+    return vars;
+  }
+  if (value && typeof value === "object") {
+    for (const v of Object.values(value)) collectMcpPlaceholders(v, vars);
+  }
+  return vars;
+}
+
+/** Relative path to mcp-load-env.mjs from parent workspace root (e.g. workspace/scripts/...). */
+export function mcpLoadEnvRel(repoDir = REPO_DIR) {
+  return join(basename(repoDir), "scripts", "mcp-load-env.mjs").replaceAll("\\", "/");
+}
+
+export function isMcpLoadEnvWrapped(config) {
+  if (!config || config.type !== "stdio") return false;
+  const args = config.args ?? [];
+  return config.command === "node"
+    && args.some((a) => typeof a === "string" && a.includes("mcp-load-env.mjs"));
+}
+
+export function parseOnlyVarsFromWrappedArgs(args = []) {
+  const idx = args.indexOf("--only");
+  if (idx !== -1 && args[idx + 1]) {
+    return args[idx + 1].split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  return null;
+}
+
+export function secretVarsForMcpServer(_name, config) {
+  const vars = new Set();
+  if (isMcpLoadEnvWrapped(config)) {
+    const fromOnly = parseOnlyVarsFromWrappedArgs(config.args ?? []);
+    if (fromOnly?.length) {
+      for (const v of fromOnly) vars.add(v);
+      return vars;
+    }
+  }
+  collectMcpPlaceholders(config, vars);
+  return vars;
+}
+
+/**
+ * Vars referenced by a Bearer `${VAR}` Authorization header on an HTTP server.
+ * These cannot be expanded from `.env.local` by every editor (notably Cursor),
+ * so callers surface them as an OAuth-preferred limitation rather than a plain
+ * missing-secret warning. Returns an empty set for non-HTTP or OAuth servers.
+ */
+export function httpBearerVarsForMcpServer(config) {
+  const vars = new Set();
+  if (!config || config.type !== "http") return vars;
+  const auth = config.headers?.Authorization;
+  if (typeof auth !== "string") return vars;
+  for (const m of auth.matchAll(/\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}/g)) vars.add(m[1]);
+  return vars;
+}
+
+// ── package.json script merge ────────────────────────────────────────────
+
+/**
+ * Scripts that live only in the aiworkspace package itself and must never be
+ * copied into a consumer workspace (they reference package-internal tooling).
+ */
+export const NON_CONSUMER_SCRIPTS = new Set(["test", "lint"]);
+
+/**
+ * Merge template scripts into a consumer's scripts, adding only missing entries.
+ * Never overwrites a script the consumer already defines, and skips
+ * package-internal scripts. Returns { scripts, added } where `added` lists the
+ * newly inserted script names (empty when nothing changed).
+ */
+export function mergePackageScripts(
+  consumerScripts = {},
+  templateScripts = {},
+  { skip = NON_CONSUMER_SCRIPTS } = {},
+) {
+  const scripts = { ...consumerScripts };
+  const added = [];
+  for (const [name, cmd] of Object.entries(templateScripts ?? {})) {
+    if (skip.has(name)) continue;
+    if (name in scripts) continue;
+    scripts[name] = cmd;
+    added.push(name);
+  }
+  return { scripts, added };
+}
 
