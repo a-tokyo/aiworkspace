@@ -5,7 +5,7 @@ import { join, dirname } from "node:path";
 import { makeTmpDir } from "./helpers.mjs";
 import {
   isSymlink, isRealDir, isFile, ensureDir, removeIfEmpty,
-  safeSymlink, symlinkTypeFor, getSkillNames, normalizeGitHubUrl, cleanCliArtifacts,
+  safeSymlink, symlinkTypeFor, shellQuotedPath, getSkillNames, normalizeGitHubUrl, cleanCliArtifacts,
   cleanLockEntry,
   validateLockFile,
   isImportableMcpFile,
@@ -158,6 +158,19 @@ describe("symlinkTypeFor", () => {
     tmp = makeTmpDir();
     writeFileSync(join(tmp.dir, "target"), "x");
     assert.equal(symlinkTypeFor("target", join(tmp.dir, "link")), undefined);
+  });
+});
+
+describe("shellQuotedPath", () => {
+  it("wraps path in double quotes", () => {
+    assert.equal(shellQuotedPath("/tmp/foo"), '"/tmp/foo"');
+  });
+  it("escapes spaces, quotes, backslashes, $, and backticks", () => {
+    const raw = '/tmp/my "$dir`\\and$vars';
+    const quoted = shellQuotedPath(raw);
+    assert.equal(quoted, '"/tmp/my \\"\\$dir\\`\\\\and\\$vars"');
+    assert.match(quoted, /\\\$/);
+    assert.match(quoted, /\\`/);
   });
 });
 

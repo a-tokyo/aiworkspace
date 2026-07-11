@@ -147,6 +147,36 @@ describe("mcp-check-secrets", () => {
     assert.match(out, /setup\.md §4\.1/);
   });
 
+  it("shell-quotes env path with $ and backticks in zshrc hint", () => {
+    tmp = makeTmpDir();
+    const parent = join(tmp.dir, "parent$`root");
+    const ws = join(parent, "ws");
+    seedCheckScripts(ws);
+    mkdirSync(join(ws, "root-config", ".agents"), { recursive: true });
+    writeFileSync(
+      join(ws, "root-config", ".agents", "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          api: {
+            type: "http",
+            url: "https://example.com/mcp",
+            headers: { Authorization: "Bearer ${env:TOKEN}" },
+          },
+        },
+      }, null, 2) + "\n",
+    );
+    writeFileSync(join(parent, ".env.local"), "TOKEN=x\n");
+
+    const r = spawnSync(process.execPath, [join(ws, "scripts", "mcp-check-secrets.mjs")], {
+      cwd: ws,
+      encoding: "utf8",
+    });
+    assert.equal(r.status, 0);
+    const out = `${r.stderr}${r.stdout}`;
+    assert.match(out, /parent\\\$/);
+    assert.match(out, /\\`/);
+  });
+
   it("formats multiple Bearer env vars as separate placeholders", () => {
     tmp = makeTmpDir();
     const ws = join(tmp.dir, "ws");

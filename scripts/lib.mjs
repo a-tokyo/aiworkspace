@@ -23,6 +23,15 @@ export const CANONICAL_SKILLS = join(ROOT_CONFIG, ".agents", "skills");
 
 export const SYMLINK_TYPE = platform() === "win32" ? "junction" : undefined;
 
+/** Double-quoted path safe to paste into sh/bash/zsh (spaces, $, backticks). */
+export function shellQuotedPath(filePath) {
+  return `"${filePath
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\$/g, "\\$")
+    .replace(/`/g, "\\`")}"`;
+}
+
 /** Windows: `junction` for directories, `file` for files; undefined on Unix. */
 export function symlinkTypeFor(target, linkPath) {
   if (platform() !== "win32") return undefined;
@@ -30,7 +39,7 @@ export function symlinkTypeFor(target, linkPath) {
     const absTarget = resolve(dirname(resolve(linkPath)), target);
     return lstatSync(absTarget).isDirectory() ? "junction" : "file";
   } catch {
-    return "junction";
+    return SYMLINK_TYPE;
   }
 }
 

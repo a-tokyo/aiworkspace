@@ -112,13 +112,28 @@ Use Cursor's `${env:NAME}` syntax in canonical `mcp.json` for HTTP headers (not 
 | **Codex** | `bearer_token_env_var` in `.codex/config.toml` — set the var in your shell |
 | **Cursor** | `${env:NAME}` reads from the **process environment at Cursor startup** — not from `envFile` (stdio only) |
 
-So for **Cursor**, add this **one-time** line to `~/.zshrc` or `~/.bashrc` (adjust the path to your parent workspace root):
+So for **Cursor**, load `.env.local` into the process environment before Cursor starts:
+
+**macOS / Linux (bash or zsh)** — add this **one-time** line to `~/.zshrc` or `~/.bashrc` (adjust the path to your parent workspace root):
 
 ```bash
 [ -f "$HOME/dev/<your-org>/.env.local" ] && set -a && source "$HOME/dev/<your-org>/.env.local" && set +a
 ```
 
-Restart Cursor (or launch it from a terminal after `source ~/.zshrc`). If Bearer headers still send the literal `${env:VAR}` string, Cursor did not inherit the variable — set it in `/etc/environment` or `~/.pam_environment` instead of only `.zshrc` when you launch Cursor from the Dock/Spotlight.
+**Windows (PowerShell)** — add to your PowerShell profile, or run before starting Cursor:
+
+```powershell
+$envFile = "$env:USERPROFILE\dev\<your-org>\.env.local"
+if (Test-Path $envFile) { Get-Content $envFile | ForEach-Object { if ($_ -match '^\s*([^#=]+)=(.*)$') { Set-Item -Path "env:$($matches[1].Trim())" -Value $matches[2].Trim() } } }
+```
+
+Alternatively, set **User environment variables** manually (Settings → System → Environment variables) from the keys in `.env.local`.
+
+Restart Cursor after changes. If Bearer headers still send the literal `${env:VAR}` string, Cursor did not inherit the variables:
+
+- **macOS:** launch Cursor from Terminal after `source ~/.zshrc`, or set session vars with `launchctl setenv` before opening from Dock
+- **Linux:** add vars to `/etc/environment` or `~/.pam_environment`, or always launch from a login shell
+- **Windows:** use User/System environment variables and fully restart Cursor (not just reload window)
 
 Prefer OAuth HTTP servers (`{ "type": "http", "url": "..." }` with no Bearer header) whenever the provider supports it.
 
@@ -213,6 +228,6 @@ If you have no `aiworkspace` devDependency (older layout), upgrade uses `git fet
 | MCP configs missing at parent root | `cd workspace && npm run sync` (or `npm run skills:setup`), verify `ls -la ../.agents/mcp.json` |
 | Skills not showing up | `cd workspace && npm run skills:setup`, verify `ls root-config/.agents/skills/` |
 | MCP server red/error | Click server name in Cursor Settings -> MCP for details, restart Cursor |
-| HTTP MCP Bearer auth fails in Cursor | Add the `source .env.local` line from workspace/setup.md §4.1 to `~/.zshrc`, restart Cursor; check MCP Logs (`Cmd+Shift+U`) for literal `${env:VAR}` in headers |
+| HTTP MCP Bearer auth fails in Cursor | See `<workspace-repo>/setup.md` §4.1 — Unix: `~/.zshrc` source line; Windows: User env vars or PowerShell profile |
 | `npm install` fails on postinstall | Run `node scripts/skills/setup-skills.mjs` manually to see errors |
 | `npm run upgrade` fails | With `aiworkspace` in devDependencies: run `npm install` then retry. Without it: `git remote -v`, add upstream `https://github.com/a-tokyo/aiworkspace.git` |

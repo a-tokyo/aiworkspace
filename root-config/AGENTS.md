@@ -78,13 +78,13 @@ Secret-bearing MCP servers load tokens from **`.env.local`** at the parent works
 |-------------|------------------|
 | **Stdio** with `${VAR}` | `npm run sync` wraps with `mcp-load-env.mjs` — reads `.env.local` automatically |
 | **HTTP OAuth** | Editor sign-in (Slack, Atlassian, etc.) — no `.env.local` |
-| **HTTP Bearer** `${env:VAR}` | VS Code twin: `envFile`. **Cursor:** one-time `source .env.local` in `~/.zshrc` — see `workspace/setup.md` §4.1 |
+| **HTTP Bearer** `${env:VAR}` | VS Code twin: `envFile`. **Cursor:** one-time env load before startup — see `<workspace-repo>/setup.md` §4.1 |
 
 **Setup (each developer, once):**
 
 1. `cp .env.example .env.local` at the parent workspace root
 2. Fill in tokens (never commit `.env.local`)
-3. If you use HTTP Bearer MCP servers in **Cursor**, add the shell one-liner from `workspace/setup.md` §4.1 to `~/.zshrc` / `~/.bashrc`
+3. If you use HTTP Bearer MCP servers in **Cursor**, follow the env-loading step in `<workspace-repo>/setup.md` §4.1 (`<workspace-repo>` = this repo folder name)
 4. Restart your editor
 
 Check tokens and Cursor HTTP hints: `npm run mcp:check-secrets`

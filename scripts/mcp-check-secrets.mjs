@@ -12,23 +12,44 @@
 
 import { existsSync } from "node:fs";
 import { join, basename } from "node:path";
+import { platform } from "node:os";
 import {
   ROOT_CONFIG, readMcpJson, WORKSPACE, REPO_DIR,
   secretVarsForMcpServer, httpBearerVarsForMcpServer, isMcpLoadEnvWrapped,
+  shellQuotedPath,
 } from "./lib.mjs";
 import { loadEnvLocal } from "./mcp-load-env.mjs";
-
-/** Shell-safe double-quoted path for copy/paste one-liners (handles spaces). */
-function shellQuotedPath(filePath) {
-  return `"${filePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-}
 
 function formatBearerPlaceholders(vars) {
   return vars.map((v) => `\${env:${v}}`).join(", ");
 }
 
-/** Parent-root-relative path to setup.md (e.g. workspace/setup.md). */
+/** Parent-root-relative path to setup.md (e.g. `<workspace-repo>/setup.md`). */
 const setupDocRef = `${basename(REPO_DIR)}/setup.md`;
+
+function warnCursorBearerEnvLoading(envLocalPath) {
+  console.warn(
+    "\nCursor resolves HTTP headers via ${env:VAR} at startup (not envFile). VS Code twins use envFile automatically.",
+  );
+  console.warn("Prefer OAuth HTTP servers when available.");
+  if (platform() === "win32") {
+    console.warn(
+      "On Windows: set User environment variables from .env.local (Settings → System → Environment variables),",
+    );
+    console.warn(
+      "  or launch Cursor from a shell after loading .env.local — see PowerShell example in",
+    );
+    console.warn(`  ${setupDocRef} §4.1.\n`);
+    return;
+  }
+  console.warn(
+    "Otherwise, add this one-time line to ~/.zshrc or ~/.bashrc, then restart Cursor:",
+  );
+  console.warn(
+    `  [ -f ${shellQuotedPath(envLocalPath)} ] && set -a && source ${shellQuotedPath(envLocalPath)} && set +a`,
+  );
+  console.warn(`  See ${setupDocRef} §4.1 for details.\n`);
+}
 
 const path = join(ROOT_CONFIG, ".agents", "mcp.json");
 if (!existsSync(path)) process.exit(0);
@@ -54,16 +75,7 @@ if (httpBearer.length > 0) {
   for (const { name, vars } of httpBearer) {
     console.warn(`  - ${name} (Authorization: Bearer ${formatBearerPlaceholders(vars)})`);
   }
-  console.warn(
-    "\nCursor resolves HTTP headers via ${env:VAR} at startup (not envFile). VS Code twins use envFile automatically.",
-  );
-  console.warn(
-    "Prefer OAuth HTTP servers when available. Otherwise, add this one-time line to ~/.zshrc or ~/.bashrc, then restart Cursor:",
-  );
-  console.warn(
-    `  [ -f ${shellQuotedPath(envLocalPath)} ] && set -a && source ${shellQuotedPath(envLocalPath)} && set +a`,
-  );
-  console.warn(`  See ${setupDocRef} §4.1 for details.\n`);
+  warnCursorBearerEnvLoading(envLocalPath);
 }
 
 if (required.size === 0) process.exit(0);
