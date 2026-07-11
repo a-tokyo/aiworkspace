@@ -52,7 +52,16 @@ const envLocalPath = join(WORKSPACE, ".env.local");
 if (!existsSync(envLocalPath)) process.exit(0);
 
 const fileEnv = loadEnvLocal(envLocalPath);
-const missing = [...required].filter((v) => !(v in fileEnv) && !process.env[v]);
+// A var counts as present only when it resolves to a non-empty value — an empty
+// placeholder like `MY_API_KEY=` (e.g. straight after copying .env.example) is
+// still "missing", matching how mcp-load-env resolves secrets.
+const hasValue = (v) => {
+  const fromFile = fileEnv[v];
+  if (typeof fromFile === "string" && fromFile !== "") return true;
+  const fromShell = process.env[v];
+  return typeof fromShell === "string" && fromShell !== "";
+};
+const missing = [...required].filter((v) => !hasValue(v));
 if (missing.length === 0) process.exit(0);
 
 console.warn("\n⚠ MCP secret env vars missing from .env.local:");

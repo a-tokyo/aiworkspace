@@ -48,6 +48,38 @@ describe("mcp-check-secrets", () => {
     assert.match(`${r.stderr}${r.stdout}`, /MY_API_KEY/);
   });
 
+  it("treats an empty placeholder in .env.local as missing", () => {
+    tmp = makeTmpDir();
+    const ws = join(tmp.dir, "ws");
+    seedCheckScripts(ws);
+    mkdirSync(join(ws, "root-config", ".agents"), { recursive: true });
+    writeFileSync(
+      join(ws, "root-config", ".agents", "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          api: {
+            type: "stdio",
+            command: "node",
+            args: [
+              "ws/scripts/mcp-load-env.mjs",
+              "--only", "MY_API_KEY",
+              "--exec", "--", "npx", "-y", "some-mcp",
+            ],
+          },
+        },
+      }, null, 2) + "\n",
+    );
+    writeFileSync(join(tmp.dir, ".env.local"), "MY_API_KEY=\n");
+
+    const r = spawnSync(process.execPath, [join(ws, "scripts", "mcp-check-secrets.mjs")], {
+      cwd: ws,
+      encoding: "utf8",
+      env: { ...process.env, MY_API_KEY: "" },
+    });
+    assert.equal(r.status, 0);
+    assert.match(`${r.stderr}${r.stdout}`, /MY_API_KEY/);
+  });
+
   it("warns about HTTP Bearer servers and recommends OAuth", () => {
     tmp = makeTmpDir();
     const ws = join(tmp.dir, "ws");
