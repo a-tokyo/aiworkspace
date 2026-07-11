@@ -11,9 +11,9 @@
  */
 
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 import {
-  ROOT_CONFIG, readMcpJson, WORKSPACE,
+  ROOT_CONFIG, readMcpJson, WORKSPACE, REPO_DIR,
   secretVarsForMcpServer, httpBearerVarsForMcpServer, isMcpLoadEnvWrapped,
 } from "./lib.mjs";
 import { loadEnvLocal } from "./mcp-load-env.mjs";
@@ -26,6 +26,9 @@ function shellQuotedPath(filePath) {
 function formatBearerPlaceholders(vars) {
   return vars.map((v) => `\${env:${v}}`).join(", ");
 }
+
+/** Parent-root-relative path to setup.md (e.g. workspace/setup.md). */
+const setupDocRef = `${basename(REPO_DIR)}/setup.md`;
 
 const path = join(ROOT_CONFIG, ".agents", "mcp.json");
 if (!existsSync(path)) process.exit(0);
@@ -60,7 +63,7 @@ if (httpBearer.length > 0) {
   console.warn(
     `  [ -f ${shellQuotedPath(envLocalPath)} ] && set -a && source ${shellQuotedPath(envLocalPath)} && set +a`,
   );
-  console.warn("  See setup.md §4.1 for details.\n");
+  console.warn(`  See ${setupDocRef} §4.1 for details.\n`);
 }
 
 if (required.size === 0) process.exit(0);
@@ -70,7 +73,7 @@ if (!existsSync(envLocalPath)) {
   console.warn("\n⚠ MCP config references secret env vars but .env.local is missing at parent workspace root.");
   console.warn(`  Required: ${[...required].sort().join(", ")}`);
   console.warn("  Create it: cp .env.example .env.local  (from parent root, not workspace/)");
-  console.warn("  Then fill tokens and restart the editor (setup.md §4.1).\n");
+  console.warn(`  Then fill tokens and restart the editor (${setupDocRef} §4.1).\n`);
   process.exit(0);
 }
 
@@ -89,4 +92,4 @@ if (missing.length === 0) process.exit(0);
 
 console.warn("\n⚠ MCP secret env vars missing from .env.local:");
 for (const v of missing.sort()) console.warn(`  - ${v}`);
-console.warn(`\nFill tokens in .env.local at parent workspace root, then restart the editor (setup.md §4.1).\n`);
+console.warn(`\nFill tokens in .env.local at parent workspace root, then restart the editor (${setupDocRef} §4.1).\n`);

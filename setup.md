@@ -213,6 +213,6 @@ If you have no `aiworkspace` devDependency (older layout), upgrade uses `git fet
 | MCP configs missing at parent root | `cd workspace && npm run sync` (or `npm run skills:setup`), verify `ls -la ../.agents/mcp.json` |
 | Skills not showing up | `cd workspace && npm run skills:setup`, verify `ls root-config/.agents/skills/` |
 | MCP server red/error | Click server name in Cursor Settings -> MCP for details, restart Cursor |
-| HTTP MCP Bearer auth fails in Cursor | Add the `source .env.local` line from setup.md §4.1 to `~/.zshrc`, restart Cursor; check MCP Logs (`Cmd+Shift+U`) for literal `${env:VAR}` in headers |
+| HTTP MCP Bearer auth fails in Cursor | Add the `source .env.local` line from workspace/setup.md §4.1 to `~/.zshrc`, restart Cursor; check MCP Logs (`Cmd+Shift+U`) for literal `${env:VAR}` in headers |
 | `npm install` fails on postinstall | Run `node scripts/skills/setup-skills.mjs` manually to see errors |
 | `npm run upgrade` fails | With `aiworkspace` in devDependencies: run `npm install` then retry. Without it: `git remote -v`, add upstream `https://github.com/a-tokyo/aiworkspace.git` |
