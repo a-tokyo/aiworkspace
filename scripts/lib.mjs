@@ -531,17 +531,17 @@ export function secretVarsForMcpServer(_name, config) {
 }
 
 /**
- * Vars referenced by a Bearer `${env:VAR}` / `${VAR}` Authorization header on an
- * HTTP server. Cursor reads `${env:VAR}` from the process environment at startup
- * (not envFile — stdio only). VS Code twins get envFile on sync. Callers surface
- * setup hints (shell profile one-liner) rather than a plain missing-secret warning.
- * Returns an empty set for non-HTTP servers without Bearer placeholders.
+ * Vars referenced by an HTTP `Authorization: Bearer ...` header using `${env:VAR}` /
+ * `${VAR}` placeholders. Cursor reads `${env:VAR}` from the process environment at
+ * startup (not envFile — stdio only). VS Code twins get envFile on sync. Callers
+ * surface setup hints (shell profile one-liner) rather than a plain missing-secret
+ * warning. Returns an empty set for non-Bearer or non-HTTP servers.
  */
 export function httpBearerVarsForMcpServer(config) {
   const vars = new Set();
   if (!config || config.type !== "http") return vars;
   const auth = config.headers?.Authorization;
-  if (typeof auth !== "string") return vars;
+  if (typeof auth !== "string" || !/^Bearer\s/i.test(auth)) return vars;
   for (const m of auth.matchAll(/\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}/g)) vars.add(m[1]);
   return vars;
 }
