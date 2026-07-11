@@ -510,3 +510,48 @@ export function secretVarsForMcpServer(_name, config) {
   return vars;
 }
 
+/**
+ * Vars referenced by a Bearer `${VAR}` Authorization header on an HTTP server.
+ * These cannot be expanded from `.env.local` by every editor (notably Cursor),
+ * so callers surface them as an OAuth-preferred limitation rather than a plain
+ * missing-secret warning. Returns an empty set for non-HTTP or OAuth servers.
+ */
+export function httpBearerVarsForMcpServer(config) {
+  const vars = new Set();
+  if (!config || config.type !== "http") return vars;
+  const auth = config.headers?.Authorization;
+  if (typeof auth !== "string") return vars;
+  for (const m of auth.matchAll(/\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}/g)) vars.add(m[1]);
+  return vars;
+}
+
+// ── package.json script merge ────────────────────────────────────────────
+
+/**
+ * Scripts that live only in the aiworkspace package itself and must never be
+ * copied into a consumer workspace (they reference package-internal tooling).
+ */
+export const NON_CONSUMER_SCRIPTS = new Set(["test", "lint"]);
+
+/**
+ * Merge template scripts into a consumer's scripts, adding only missing entries.
+ * Never overwrites a script the consumer already defines, and skips
+ * package-internal scripts. Returns { scripts, added } where `added` lists the
+ * newly inserted script names (empty when nothing changed).
+ */
+export function mergePackageScripts(
+  consumerScripts = {},
+  templateScripts = {},
+  { skip = NON_CONSUMER_SCRIPTS } = {},
+) {
+  const scripts = { ...consumerScripts };
+  const added = [];
+  for (const [name, cmd] of Object.entries(templateScripts ?? {})) {
+    if (skip.has(name)) continue;
+    if (name in scripts) continue;
+    scripts[name] = cmd;
+    added.push(name);
+  }
+  return { scripts, added };
+}
+

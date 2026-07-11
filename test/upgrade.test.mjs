@@ -56,7 +56,15 @@ function createConsumer(parentDir, {
     cpSync(join(REAL, "scripts"), join(nmAiws, "scripts"), { recursive: true });
     writeFileSync(
       join(nmAiws, "package.json"),
-      JSON.stringify({ name: "aiworkspace", version: "9.9.9-test" }) + "\n",
+      JSON.stringify({
+        name: "aiworkspace",
+        version: "9.9.9-test",
+        scripts: {
+          "mcp:check-secrets": "node scripts/mcp-check-secrets.mjs",
+          test: "node --test test/*.test.mjs",
+          lint: "eslint .",
+        },
+      }) + "\n",
     );
     seedMcpTemplate(join(nmAiws, "root-config"));
   }
@@ -94,7 +102,11 @@ function seedBareUpstream(parentDir) {
   seedMcpTemplate(join(work, "root-config"));
   writeFileSync(
     join(work, "package.json"),
-    `${JSON.stringify({ name: "aiworkspace", version: "2.0.0-gitfixture" })}\n`,
+    `${JSON.stringify({
+      name: "aiworkspace",
+      version: "2.0.0-gitfixture",
+      scripts: { "mcp:check-secrets": "node scripts/mcp-check-secrets.mjs" },
+    })}\n`,
   );
   const gw = (...a) => execFileSync("git", a, { cwd: work, stdio: "ignore" });
   gw("init");
@@ -187,6 +199,42 @@ describe("upgrade (npm path)", () => {
     const r = runUpgradeScript(ws, binDir);
     assert.notEqual(r.status, 0, "should exit non-zero on signal");
     assert.ok(r.stderr.includes("interrupted"), `expected interrupted error, got: ${r.stderr}`);
+  });
+
+  it("merges missing template scripts into consumer package.json", () => {
+    const { ws, binDir } = make();
+
+    const r = runUpgradeScript(ws, binDir);
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+
+    const pkg = JSON.parse(readFileSync(join(ws, "package.json"), "utf8"));
+    assert.equal(
+      pkg.scripts?.["mcp:check-secrets"],
+      "node scripts/mcp-check-secrets.mjs",
+      "mcp:check-secrets should be merged in",
+    );
+    assert.ok(!("test" in (pkg.scripts ?? {})), "package-internal test script must not be merged");
+    assert.ok(!("lint" in (pkg.scripts ?? {})), "package-internal lint script must not be merged");
+  });
+
+  it("does not overwrite consumer's existing scripts on upgrade", () => {
+    const { ws, binDir } = make();
+
+    writeFileSync(
+      join(ws, "package.json"),
+      JSON.stringify({
+        name: "consumer-ws",
+        private: true,
+        devDependencies: { aiworkspace: "^0.1.0" },
+        scripts: { "mcp:check-secrets": "echo custom" },
+      }) + "\n",
+    );
+
+    const r = runUpgradeScript(ws, binDir);
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+
+    const pkg = JSON.parse(readFileSync(join(ws, "package.json"), "utf8"));
+    assert.equal(pkg.scripts["mcp:check-secrets"], "echo custom", "existing script must be preserved");
   });
 
   it("scaffolds MCP configs and stages them on upgrade", () => {
