@@ -115,7 +115,7 @@ Use Cursor's `${env:NAME}` syntax in canonical `mcp.json` for HTTP headers (not 
 So for **Cursor**, add this **one-time** line to `~/.zshrc` or `~/.bashrc` (adjust the path to your parent workspace root):
 
 ```bash
-[ -f ~/dev/<your-org>/.env.local ] && set -a && source ~/dev/<your-org>/.env.local && set +a
+[ -f "$HOME/dev/<your-org>/.env.local" ] && set -a && source "$HOME/dev/<your-org>/.env.local" && set +a
 ```
 
 Restart Cursor (or launch it from a terminal after `source ~/.zshrc`). If Bearer headers still send the literal `${env:VAR}` string, Cursor did not inherit the variable — set it in `/etc/environment` or `~/.pam_environment` instead of only `.zshrc` when you launch Cursor from the Dock/Spotlight.

@@ -141,10 +141,39 @@ describe("mcp-check-secrets", () => {
     const out = `${r.stderr}${r.stdout}`;
     assert.match(out, /Bearer token header/);
     assert.match(out, /github/);
-    assert.match(out, /GITHUB_PAT/);
+    assert.match(out, /\$\{env:GITHUB_PAT\}/);
     assert.match(out, /~\/.zshrc/);
-    assert.match(out, /source .*\.env\.local/);
+    assert.match(out, /source ".*\.env\.local"/);
     assert.match(out, /setup\.md §4\.1/);
+  });
+
+  it("formats multiple Bearer env vars as separate placeholders", () => {
+    tmp = makeTmpDir();
+    const ws = join(tmp.dir, "ws");
+    seedCheckScripts(ws);
+    mkdirSync(join(ws, "root-config", ".agents"), { recursive: true });
+    writeFileSync(
+      join(ws, "root-config", ".agents", "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          api: {
+            type: "http",
+            url: "https://example.com/mcp",
+            headers: { Authorization: "Bearer ${env:TOKEN_A}${env:TOKEN_B}" },
+          },
+        },
+      }, null, 2) + "\n",
+    );
+
+    const r = spawnSync(process.execPath, [join(ws, "scripts", "mcp-check-secrets.mjs")], {
+      cwd: ws,
+      encoding: "utf8",
+    });
+    assert.equal(r.status, 0);
+    const out = `${r.stderr}${r.stdout}`;
+    assert.match(out, /\$\{env:TOKEN_A\}/);
+    assert.match(out, /\$\{env:TOKEN_B\}/);
+    assert.doesNotMatch(out, /\$\{env:TOKEN_A, TOKEN_B\}/);
   });
 
   it("does not treat OAuth HTTP servers as secret-bearing", () => {

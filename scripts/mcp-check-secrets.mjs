@@ -18,6 +18,15 @@ import {
 } from "./lib.mjs";
 import { loadEnvLocal } from "./mcp-load-env.mjs";
 
+/** Shell-safe double-quoted path for copy/paste one-liners (handles spaces). */
+function shellQuotedPath(filePath) {
+  return `"${filePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function formatBearerPlaceholders(vars) {
+  return vars.map((v) => `\${env:${v}}`).join(", ");
+}
+
 const path = join(ROOT_CONFIG, ".agents", "mcp.json");
 if (!existsSync(path)) process.exit(0);
 
@@ -40,7 +49,7 @@ if (httpBearer.length > 0) {
   const envLocalPath = join(WORKSPACE, ".env.local");
   console.warn("\n⚠ MCP HTTP servers using a Bearer token header:");
   for (const { name, vars } of httpBearer) {
-    console.warn(`  - ${name} (Authorization: Bearer \${env:${vars.join(", ")}})`);
+    console.warn(`  - ${name} (Authorization: Bearer ${formatBearerPlaceholders(vars)})`);
   }
   console.warn(
     "\nCursor resolves HTTP headers via ${env:VAR} at startup (not envFile). VS Code twins use envFile automatically.",
@@ -49,7 +58,7 @@ if (httpBearer.length > 0) {
     "Prefer OAuth HTTP servers when available. Otherwise, add this one-time line to ~/.zshrc or ~/.bashrc, then restart Cursor:",
   );
   console.warn(
-    `  [ -f ${envLocalPath} ] && set -a && source ${envLocalPath} && set +a`,
+    `  [ -f ${shellQuotedPath(envLocalPath)} ] && set -a && source ${shellQuotedPath(envLocalPath)} && set +a`,
   );
   console.warn("  See setup.md §4.1 for details.\n");
 }
