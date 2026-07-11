@@ -66,6 +66,8 @@ Edit `.agents/mcp.json` to add or change servers. `npm run sync` refreshes the C
 
 **Secrets:** copy `.env.example` to `.env.local` at the parent workspace root, fill tokens, restart the editor. See `setup.md` §4.1.
 
+**Secrets:** copy `.env.example` to `.env.local` at the parent workspace root, fill tokens, restart the editor. See `setup.md` §4.1.
+
 **Mirror all, no opt-out.** Every developer gets all tool configs (Cursor, Claude Code, Codex, VS Code). `npm install` and git hooks recreate them at the parent root — deleting a parent-root `.cursor/` or `.codex/` folder does not opt out; setup will restore it. Unused symlinks are harmless. Per-project overrides still win via nearest-wins (`<project>/.cursor/mcp.json` etc.).
 
 **Existing workspaces:** `npm run sync` scaffolds missing MCP files and merges template servers (e.g. context7) with any servers you already have — bundled servers are refreshed from the template; your own servers (not shipped by aiworkspace) are preserved. Servers that exist only at the parent workspace root are migrated into canonical on sync if they are not already there.

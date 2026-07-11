@@ -7,7 +7,7 @@
  * Exits silently when the canonical MCP config is absent. HTTP Bearer `${VAR}` header
  * portability hints are emitted regardless of whether `.env.local` exists. When wrapped
  * stdio servers need secrets but `.env.local` is missing, emits a non-fatal hint to
- * create it from `.env.example`.
+ * create it from `.env.example`. Missing-secret value warnings require `.env.local`.
  */
 
 import { existsSync } from "node:fs";
