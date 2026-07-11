@@ -22,12 +22,35 @@ root-config/
 │   ├── mcp.json        # Canonical MCP server definitions
 │   └── skills/         # Shared AI agent skills (workspace-wide)
 ├── .cursor/
-│   └── mcp.json        # Symlink to ../.agents/mcp.json (Cursor MCP)
+│   ├── mcp.json        # Symlink to ../.agents/mcp.json (Cursor MCP)
+│   └── rules/          # Team Cursor rules (mirrored)
+├── .claude/
+│   ├── settings.json   # Team Claude Code settings (mirrored)
+│   └── settings.local.json.example  # Optional personal MCP enable list (copy once; not mirrored live)
 ├── .codex/
-│   └── config.toml     # Codex MCP twin (upgrade-derived from canonical)
+│   ├── config.toml     # Codex config (preamble team-editable; MCP blocks sync-derived)
+│   └── rules/          # Team Codex rules (mirrored)
 └── .vscode/
-    └── mcp.json        # VS Code MCP twin (upgrade-derived from canonical)
+    ├── mcp.json        # VS Code MCP twin (sync-derived from canonical)
+    ├── settings.json   # Team workspace editor defaults (mirrored)
+    └── extensions.json # Recommended extensions (mirrored)
 ```
+
+## Team vs personal by editor
+
+Everyone shares **MCP definitions** (`.agents/mcp.json`) and **agent instructions** (`AGENTS.md`). Tool-specific settings split differently:
+
+| Concern | Claude | Cursor | VS Code | Codex |
+|---------|--------|--------|---------|-------|
+| MCP definitions | Symlinked `.mcp.json` | Symlinked `.cursor/mcp.json` | Generated `.vscode/mcp.json` | Generated `[mcp_servers.*]` in `config.toml` |
+| Team tool settings | `settings.json` | `.cursor/rules/` | `.vscode/settings.json`, `extensions.json` | Preamble in `config.toml`, `.codex/rules/` |
+| Personal overrides | `settings.local.json` (copy from example) | User `settings.json` in app data + MCP UI | User `settings.json` + MCP UI | `~/.codex/config.toml` + `codex mcp login` |
+| MCP on/off per user | `enabledMcpjsonServers` in local file | Settings → MCP | MCP extension UI | OAuth login state per machine |
+| Secrets | `.env.local` at parent root | Same (+ Cursor Bearer env-load step) | `envFile` on MCP twin | `bearer_token_env_var` / user config |
+
+**Sync never overwrites:** `.claude/settings.local.json`, editor user settings, or `~/.codex/config.toml`.
+
+**Do not hand-edit** Codex `[mcp_servers.*]` blocks or VS Code `mcp.json` — edit `.agents/mcp.json` and run `npm run sync`.
 
 ## Supported Conventions
 
@@ -74,26 +97,50 @@ Edit `.agents/mcp.json` to add or change servers. `npm run sync` refreshes the C
 
 | Path | Purpose |
 |------|---------|
-| `.cursor/rules/<name>.md` | Persistent rules across all repos |
+| `.cursor/mcp.json` | Symlink to `../.agents/mcp.json` — MCP definitions (team) |
+| `.cursor/rules/<name>.mdc` | **Team** persistent rules across all repos (mirrored) |
 | `.cursor/plans/<name>.md` | Saved workspace-level plans |
 | `.cursor/agents/<name>.md` | Custom Cursor agents |
+
+**Personal:** editor preferences and MCP enable/disable live in Cursor User settings (`~/Library/Application Support/Cursor/User/settings.json` on macOS) and Settings → MCP — not in repo files.
 
 ### `.claude/` (Claude Code)
 
 | Path | Purpose |
 |------|---------|
-| `.claude/settings.json` | Claude Code settings |
+| `.claude/settings.json` | **Team** Claude Code settings (permissions, hooks) — mirrored to parent root |
+| `.claude/settings.local.json.example` | Starter for **personal** MCP enable list — copy once; live `settings.local.json` is never mirrored |
 | `.claude/rules/<name>.md` | Persistent rules |
 | `.claude/commands/<name>.md` | Custom slash commands |
 | `.claude/agents/<name>.md` | Custom agents |
+
+**Team vs personal:** `settings.json` is shared and symlinked on `npm run sync`. `settings.local.json` holds per-developer overrides (`enabledMcpjsonServers`, `skillOverrides`) and must stay local — copy from the example after install:
+
+```bash
+cp <workspace-repo>/root-config/.claude/settings.local.json.example .claude/settings.local.json
+```
+
+Remove MCP names you do not use. Sync never overwrites an existing `settings.local.json`.
+
+### `.vscode/` (VS Code + Copilot)
+
+| Path | Purpose |
+|------|---------|
+| `.vscode/mcp.json` | MCP twin (`servers` schema) — regenerated from canonical on sync |
+| `.vscode/settings.json` | **Team** workspace editor defaults when opening parent root |
+| `.vscode/extensions.json` | Recommended extensions for the monorepo |
+
+**Personal:** User settings and MCP UI toggles stay in VS Code User scope — not mirrored.
 
 ### `.codex/` (OpenAI Codex)
 
 | Path | Purpose |
 |------|---------|
-| `.codex/config.toml` | Codex configuration |
+| `.codex/config.toml` | Team config: editable **preamble** before `[mcp_servers.*]`; MCP blocks regenerated on sync |
+| `.codex/rules/<name>.md` | **Team** Codex rules (mirrored) |
 | `.codex/agents/<name>.md` | Custom agents |
-| `.codex/rules/<name>.md` | Persistent rules |
+
+**Personal:** model, provider, and auth in `~/.codex/config.toml`. Run `codex mcp login <name>` once per OAuth HTTP server.
 
 ## Adding a New Config
 

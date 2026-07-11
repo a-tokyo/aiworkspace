@@ -1,4 +1,8 @@
-# Auto-generated from .agents/mcp.json — run `npm run upgrade` to refresh.
+# Team Codex defaults (preamble) — safe project keys only. Edit here.
+# [mcp_servers.*] blocks below are regenerated from .agents/mcp.json on `npm run sync`.
+# Personal model, provider, and auth: ~/.codex/config.toml (never mirrored).
+
+project_doc_fallback_filenames = ["AGENTS.md", "CLAUDE.md", "CONTINUING.md"]
 
 [mcp_servers.context7]
 command = "npx"

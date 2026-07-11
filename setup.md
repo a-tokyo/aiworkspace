@@ -174,6 +174,26 @@ Without `--project`: workspace-wide (installs to `root-config/.agents/skills/`).
 - **Cursor**: `@workspace/.agents/skills/<name>/SKILL.md` in chat
 - **Codex, Amp, Gemini CLI**: auto-discovered from `.agents/skills/`
 
+### Claude Code (one-time)
+
+`npm install` mirrors team `settings.json` to the parent root. For personal MCP enable toggles, copy the example once (sync never overwrites your live file):
+
+```bash
+cp <workspace-repo>/root-config/.claude/settings.local.json.example .claude/settings.local.json
+```
+
+Edit locally — remove servers you do not use. MCP **definitions** stay in `.agents/mcp.json`; `enabledMcpjsonServers` only controls which servers Claude Code activates for you.
+
+### Team vs personal by editor
+
+| Tool | Team (mirrored on sync) | Personal (never mirrored) |
+|------|-------------------------|---------------------------|
+| **All** | `AGENTS.md`, `.agents/mcp.json` | `.env.local` (secrets) |
+| **Claude** | `.claude/settings.json` | `.claude/settings.local.json` |
+| **Cursor** | `.cursor/rules/`, `.cursor/mcp.json` | User settings, MCP enable in Settings → MCP |
+| **VS Code** | `.vscode/settings.json`, `extensions.json`, `mcp.json` | User settings, MCP UI |
+| **Codex** | `config.toml` preamble, `.codex/rules/` | `~/.codex/config.toml`, `codex mcp login` |
+
 ### Third-Party Docs
 
 Use Cursor's `@Docs > Add new doc` for built-in indexing. For non-Cursor tools, create a `docs-3rdparty/` sibling repo.

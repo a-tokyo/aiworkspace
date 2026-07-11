@@ -153,6 +153,7 @@ describe("aiworkspace init", () => {
     assert.ok(existsSync(join(rc, ".codex", "config.toml")), "codex twin should be included");
     assert.ok(existsSync(join(rc, ".vscode", "mcp.json")), "vscode twin should be included");
     assert.ok(existsSync(join(rc, ".env.example")), ".env.example should be in root-config");
+    assert.ok(existsSync(join(rc, ".claude", "settings.json")), "claude team settings should be included");
   });
 
   it("rejects invalid names", () => {
