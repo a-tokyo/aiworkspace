@@ -4,9 +4,10 @@
  * @managed by aiworkspace — see scripts/README.md before editing.
  *
  * Warn when MCP config references secret env vars missing from parent-root `.env.local`.
- * Exits silently when the canonical MCP config is absent; the missing-secret warnings also
- * require `.env.local`. HTTP Bearer `${VAR}` header portability hints are emitted regardless
- * of whether `.env.local` exists.
+ * Exits silently when the canonical MCP config is absent. HTTP Bearer `${VAR}` header
+ * portability hints are emitted regardless of whether `.env.local` exists. When wrapped
+ * stdio servers need secrets but `.env.local` is missing, emits a non-fatal hint to
+ * create it from `.env.example`.
  */
 
 import { existsSync } from "node:fs";
@@ -51,7 +52,13 @@ if (httpBearer.length > 0) {
 if (required.size === 0) process.exit(0);
 
 const envLocalPath = join(WORKSPACE, ".env.local");
-if (!existsSync(envLocalPath)) process.exit(0);
+if (!existsSync(envLocalPath)) {
+  console.warn("\n⚠ MCP config references secret env vars but .env.local is missing at parent workspace root.");
+  console.warn(`  Required: ${[...required].sort().join(", ")}`);
+  console.warn("  Create it: cp .env.example .env.local  (from parent root, not workspace/)");
+  console.warn("  Then fill tokens and restart the editor (setup.md §4.1).\n");
+  process.exit(0);
+}
 
 const fileEnv = loadEnvLocal(envLocalPath);
 // A var counts as present only when it resolves to a non-empty value — an empty
