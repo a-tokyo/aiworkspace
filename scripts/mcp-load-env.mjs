@@ -45,15 +45,24 @@ function resolveEnvVar(varName, fileEnv, shellEnv = process.env) {
   return undefined;
 }
 
-function buildChildEnv(fileEnv, only) {
+export function buildChildEnv(fileEnv, { only = null, maps = [] } = {}) {
   const childEnv = { ...process.env };
-  if (!only?.length) {
+  if (!only?.length && !maps.length) {
     Object.assign(childEnv, fileEnv);
     return childEnv;
   }
-  for (const name of only) {
+  for (const name of only ?? []) {
     const val = resolveEnvVar(name, fileEnv);
     if (val !== undefined) childEnv[name] = val;
+  }
+  for (const entry of maps) {
+    const sep = entry.indexOf(":");
+    if (sep <= 0) continue;
+    const childKey = entry.slice(0, sep).trim();
+    const sourceVar = entry.slice(sep + 1).trim();
+    if (!childKey || !sourceVar) continue;
+    const val = resolveEnvVar(sourceVar, fileEnv);
+    if (val !== undefined) childEnv[childKey] = val;
   }
   return childEnv;
 }
@@ -71,7 +80,11 @@ function parseArgs(argv) {
     if (onlyIdx !== -1 && onlyIdx < execIdx && argv[onlyIdx + 1]) {
       only = argv[onlyIdx + 1].split(",").map((s) => s.trim()).filter(Boolean);
     }
-    return { mode: "exec", command: argv[sep + 1], args: argv.slice(sep + 2), only };
+    const maps = [];
+    for (let i = 0; i < execIdx; i++) {
+      if (argv[i] === "--map" && argv[i + 1]) maps.push(argv[++i]);
+    }
+    return { mode: "exec", command: argv[sep + 1], args: argv.slice(sep + 2), only, maps };
   }
 
   let headerName = null;
@@ -101,7 +114,7 @@ function main() {
     return;
   }
 
-  const childEnv = buildChildEnv(fileEnv, opts.only);
+  const childEnv = buildChildEnv(fileEnv, { only: opts.only, maps: opts.maps });
   const r = spawnSync(opts.command, opts.args, {
     env: childEnv,
     stdio: "inherit",

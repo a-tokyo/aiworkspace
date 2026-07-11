@@ -448,6 +448,20 @@ export function hasMcpPlaceholder(value) {
   return /\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}/.test(value);
 }
 
+const SINGLE_MCP_PLACEHOLDER_RE = /^\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}$/;
+
+/** Env entries like API_KEY: "${MY_API_KEY}" need remapping when wrapping (child key ≠ source var). */
+export function extractEnvKeyMaps(env) {
+  if (!env || typeof env !== "object") return [];
+  const maps = [];
+  for (const [childKey, value] of Object.entries(env)) {
+    if (typeof value !== "string") continue;
+    const m = value.match(SINGLE_MCP_PLACEHOLDER_RE);
+    if (m && m[1] !== childKey) maps.push({ childKey, sourceVar: m[1] });
+  }
+  return maps;
+}
+
 export function collectMcpPlaceholders(value, vars = new Set()) {
   if (typeof value === "string") {
     for (const m of value.matchAll(/\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}/g)) vars.add(m[1]);

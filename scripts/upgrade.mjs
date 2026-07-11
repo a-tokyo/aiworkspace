@@ -81,7 +81,7 @@ function replaceScriptsFromPackage(src, dest) {
   }
 }
 
-function upgradeViaLinkedPackage() {
+function upgradeViaLocalPackage() {
   const pkgRoot = join(REPO_DIR, "node_modules", "aiworkspace");
   const src = join(pkgRoot, "scripts");
   if (!existsSync(src)) return null;
@@ -89,7 +89,7 @@ function upgradeViaLinkedPackage() {
   replaceScriptsFromPackage(src, join(REPO_DIR, "scripts"));
 
   const ver = readVersion(join(pkgRoot, "package.json"));
-  console.log(`Scripts updated from linked aiworkspace v${ver} (npm link).`);
+  console.log(`Scripts updated from aiworkspace v${ver} (node_modules fallback).`);
 
   return join(pkgRoot, "root-config");
 }
@@ -142,7 +142,7 @@ try {
   if (hasNpmDep) {
     templateRoot = upgradeViaNpm();
     if (!templateRoot) {
-      templateRoot = upgradeViaLinkedPackage();
+      templateRoot = upgradeViaLocalPackage();
     }
     if (!templateRoot) {
       console.warn("npm upgrade failed — falling back to git upstream...");

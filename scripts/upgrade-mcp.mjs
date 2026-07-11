@@ -14,6 +14,7 @@ import {
   REPO_DIR, readMcpJson, isImportableMcpFile, ensureDir, safeSymlink,
   isSymlink, isFile, MCP_TEMPLATE_REL_PATHS,
   collectMcpPlaceholders, hasMcpPlaceholder, mcpLoadEnvRel, isMcpLoadEnvWrapped,
+  extractEnvKeyMaps,
 } from "./lib.mjs";
 
 export { mcpLoadEnvRel } from "./lib.mjs";
@@ -41,6 +42,9 @@ export function wrapStdioWithEnvLoader(config, { repoDir = REPO_DIR } = {}) {
   const vars = [...collectMcpPlaceholders(config)];
   const loaderArgs = [mcpLoadEnvRel(repoDir)];
   if (vars.length) loaderArgs.push("--only", vars.join(","));
+  for (const { childKey, sourceVar } of extractEnvKeyMaps(config.env)) {
+    loaderArgs.push("--map", `${childKey}:${sourceVar}`);
+  }
   loaderArgs.push("--exec", "--", innerCommand, ...innerArgs);
 
   const next = {

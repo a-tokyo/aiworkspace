@@ -536,6 +536,8 @@ describe("upgradeMcp", () => {
     assert.equal(out.api.command, "node");
     assert.ok(out.api.args.some((a) => String(a).includes("mcp-load-env.mjs")));
     assert.ok(out.api.args.includes("--only"));
+    assert.ok(out.api.args.includes("--map"));
+    assert.ok(out.api.args.includes("API_KEY:MY_API_KEY"));
   });
 
   it("toVscodeServers adds envFile for HTTP servers with secret placeholders", () => {

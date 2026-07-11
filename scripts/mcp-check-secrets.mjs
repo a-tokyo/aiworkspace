@@ -3,8 +3,8 @@
 /**
  * @managed by aiworkspace — see scripts/README.md before editing.
  *
- * Warn when MCP config references env vars that are unset in the current shell.
- * Non-fatal — fresh clones won't have tokens yet.
+ * Warn when MCP config references secret env vars missing from parent-root `.env.local`.
+ * Exits silently when canonical MCP config or `.env.local` is absent (fresh clones).
  */
 
 import { existsSync } from "node:fs";

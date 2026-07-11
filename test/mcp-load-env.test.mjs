@@ -5,7 +5,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { makeTmpDir } from "./helpers.mjs";
-import { parseDotenv, loadEnvLocal } from "../scripts/mcp-load-env.mjs";
+import { parseDotenv, loadEnvLocal, buildChildEnv } from "../scripts/mcp-load-env.mjs";
 
 const REAL = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(REAL, "..", "scripts", "mcp-load-env.mjs");
@@ -70,6 +70,12 @@ BAZ="quoted"
     const out = JSON.parse(r.stdout.trim());
     assert.equal(out.secret, "from-file");
     assert.equal(out.other, "");
+  });
+
+  it("--map remaps child env keys from source vars", () => {
+    const env = buildChildEnv({ MY_API_KEY: "secret" }, { only: ["MY_API_KEY"], maps: ["API_KEY:MY_API_KEY"] });
+    assert.equal(env.MY_API_KEY, "secret");
+    assert.equal(env.API_KEY, "secret");
   });
 
   it("--exec passes env vars to child process", () => {

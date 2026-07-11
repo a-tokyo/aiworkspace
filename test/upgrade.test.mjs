@@ -223,22 +223,22 @@ describe("upgrade (git path and npm fallback)", () => {
     assert.ok(r.stdout.includes("2.0.0-gitfixture"), `expected upstream version, got: ${r.stdout}`);
   });
 
-  it("uses linked aiworkspace when npm update fails but package is present", () => {
+  it("uses local node_modules package when npm update fails", () => {
     tmp = makeTmpDir();
     const { ws, binDir } = createConsumer(tmp.dir, { gitInit: true, npmExitCode: 1 });
 
     writeFileSync(
       join(ws, "node_modules", "aiworkspace", "scripts", "postinstall.mjs"),
-      "// linked-upgrade-marker\n",
+      "// local-package-marker\n",
     );
 
     const r = runUpgradeScript(ws, binDir);
     assert.equal(r.status, 0, r.stderr + r.stdout);
-    assert.ok(r.stdout.includes("(npm link)"), `expected npm link path, got: ${r.stdout}`);
+    assert.ok(r.stdout.includes("(node_modules fallback)"), `expected fallback path, got: ${r.stdout}`);
     assert.ok(!r.stdout.includes("(git upstream)"), `should not fall back to git, got: ${r.stdout}`);
     assert.equal(
       readFileSync(join(ws, "scripts", "postinstall.mjs"), "utf8"),
-      "// linked-upgrade-marker\n",
+      "// local-package-marker\n",
     );
   });
 
