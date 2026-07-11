@@ -11,12 +11,45 @@
  */
 
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, basename } from "node:path";
+import { platform } from "node:os";
 import {
-  ROOT_CONFIG, readMcpJson, WORKSPACE,
+  ROOT_CONFIG, readMcpJson, WORKSPACE, REPO_DIR,
   secretVarsForMcpServer, httpBearerVarsForMcpServer, isMcpLoadEnvWrapped,
+  shellQuotedPath,
 } from "./lib.mjs";
 import { loadEnvLocal } from "./mcp-load-env.mjs";
+
+function formatBearerPlaceholders(vars) {
+  return vars.map((v) => `\${env:${v}}`).join(", ");
+}
+
+/** Parent-root-relative path to setup.md (e.g. `<workspace-repo>/setup.md`). */
+const setupDocRef = `${basename(REPO_DIR)}/setup.md`;
+
+function warnCursorBearerEnvLoading(envLocalPath) {
+  console.warn(
+    "\nCursor resolves HTTP headers via ${env:VAR} at startup (not envFile). VS Code twins use envFile automatically.",
+  );
+  console.warn("Prefer OAuth HTTP servers when available.");
+  if (platform() === "win32") {
+    console.warn(
+      "On Windows: set User environment variables from .env.local (Settings → System → Environment variables),",
+    );
+    console.warn(
+      "  or launch Cursor from a shell after loading .env.local — see PowerShell example in",
+    );
+    console.warn(`  ${setupDocRef} §4.1.\n`);
+    return;
+  }
+  console.warn(
+    "Otherwise, add this one-time line to ~/.zshrc or ~/.bashrc, then restart Cursor:",
+  );
+  console.warn(
+    `  [ -f ${shellQuotedPath(envLocalPath)} ] && set -a && source ${shellQuotedPath(envLocalPath)} && set +a`,
+  );
+  console.warn(`  See ${setupDocRef} §4.1 for details.\n`);
+}
 
 const path = join(ROOT_CONFIG, ".agents", "mcp.json");
 if (!existsSync(path)) process.exit(0);
@@ -37,16 +70,12 @@ for (const [name, config] of Object.entries(parsed.mcpServers)) {
 }
 
 if (httpBearer.length > 0) {
+  const envLocalPath = join(WORKSPACE, ".env.local");
   console.warn("\n⚠ MCP HTTP servers using a Bearer token header:");
   for (const { name, vars } of httpBearer) {
-    console.warn(`  - ${name} (Authorization: Bearer \${${vars.join(", ")}})`);
+    console.warn(`  - ${name} (Authorization: Bearer ${formatBearerPlaceholders(vars)})`);
   }
-  console.warn(
-    "\nNot every editor expands .env.local into HTTP headers (Cursor does not).",
-  );
-  console.warn(
-    "Prefer the server's OAuth endpoint (plain { type: \"http\", url }) so sign-in happens in the editor — no token needed.\n",
-  );
+  warnCursorBearerEnvLoading(envLocalPath);
 }
 
 if (required.size === 0) process.exit(0);
@@ -56,7 +85,7 @@ if (!existsSync(envLocalPath)) {
   console.warn("\n⚠ MCP config references secret env vars but .env.local is missing at parent workspace root.");
   console.warn(`  Required: ${[...required].sort().join(", ")}`);
   console.warn("  Create it: cp .env.example .env.local  (from parent root, not workspace/)");
-  console.warn("  Then fill tokens and restart the editor (setup.md §4.1).\n");
+  console.warn(`  Then fill tokens and restart the editor (${setupDocRef} §4.1).\n`);
   process.exit(0);
 }
 
@@ -75,4 +104,4 @@ if (missing.length === 0) process.exit(0);
 
 console.warn("\n⚠ MCP secret env vars missing from .env.local:");
 for (const v of missing.sort()) console.warn(`  - ${v}`);
-console.warn(`\nFill tokens in .env.local at parent workspace root, then restart the editor (setup.md §4.1).\n`);
+console.warn(`\nFill tokens in .env.local at parent workspace root, then restart the editor (${setupDocRef} §4.1).\n`);

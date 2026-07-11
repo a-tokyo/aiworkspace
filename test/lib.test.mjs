@@ -5,7 +5,7 @@ import { join, dirname } from "node:path";
 import { makeTmpDir } from "./helpers.mjs";
 import {
   isSymlink, isRealDir, isFile, ensureDir, removeIfEmpty,
-  safeSymlink, getSkillNames, normalizeGitHubUrl, cleanCliArtifacts,
+  safeSymlink, symlinkTypeFor, shellQuotedPath, getSkillNames, normalizeGitHubUrl, cleanCliArtifacts,
   cleanLockEntry,
   validateLockFile,
   isImportableMcpFile,
@@ -149,6 +149,28 @@ describe("safeSymlink", () => {
     const ok = safeSymlink("target", join(tmp.dir, "link"), { replace: true, quiet: true });
     assert.equal(ok, true);
     assert.equal(isSymlink(join(tmp.dir, "link")), true);
+  });
+});
+
+describe("symlinkTypeFor", () => {
+  it("returns undefined on non-Windows", () => {
+    if (process.platform === "win32") return;
+    tmp = makeTmpDir();
+    writeFileSync(join(tmp.dir, "target"), "x");
+    assert.equal(symlinkTypeFor("target", join(tmp.dir, "link")), undefined);
+  });
+});
+
+describe("shellQuotedPath", () => {
+  it("wraps path in double quotes", () => {
+    assert.equal(shellQuotedPath("/tmp/foo"), '"/tmp/foo"');
+  });
+  it("escapes quotes, backslashes, $, and backticks (spaces are safe in quotes)", () => {
+    const raw = '/tmp/my "$dir`\\and$vars';
+    const quoted = shellQuotedPath(raw);
+    assert.equal(quoted, '"/tmp/my \\"\\$dir\\`\\\\and\\$vars"');
+    assert.match(quoted, /\\\$/);
+    assert.match(quoted, /\\`/);
   });
 });
 

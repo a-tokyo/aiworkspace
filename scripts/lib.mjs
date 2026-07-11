@@ -23,6 +23,26 @@ export const CANONICAL_SKILLS = join(ROOT_CONFIG, ".agents", "skills");
 
 export const SYMLINK_TYPE = platform() === "win32" ? "junction" : undefined;
 
+/** Double-quoted path safe to paste into sh/bash/zsh (spaces, $, backticks). */
+export function shellQuotedPath(filePath) {
+  return `"${filePath
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\$/g, "\\$")
+    .replace(/`/g, "\\`")}"`;
+}
+
+/** Windows: `junction` for directories, `file` for files; undefined on Unix. */
+export function symlinkTypeFor(target, linkPath) {
+  if (platform() !== "win32") return undefined;
+  try {
+    const absTarget = resolve(dirname(resolve(linkPath)), target);
+    return lstatSync(absTarget).isDirectory() ? "junction" : "file";
+  } catch {
+    return SYMLINK_TYPE;
+  }
+}
+
 // Files in root-config/ that should NOT be mirrored to the parent root.
 export const MIRROR_SKIP = new Set(["README.md", "skills-lock.json"]);
 
@@ -118,7 +138,7 @@ export function safeSymlink(target, linkPath, { quiet = false, replace = false, 
   };
 
   try {
-    symlinkSync(target, linkPath, SYMLINK_TYPE);
+    symlinkSync(target, linkPath, symlinkTypeFor(target, linkPath));
     log(`  ✓ ${rel} → ${target}`);
     return true;
   } catch {
@@ -511,10 +531,11 @@ export function secretVarsForMcpServer(_name, config) {
 }
 
 /**
- * Vars referenced by a Bearer `${VAR}` Authorization header on an HTTP server.
- * These cannot be expanded from `.env.local` by every editor (notably Cursor),
- * so callers surface them as an OAuth-preferred limitation rather than a plain
- * missing-secret warning. Returns an empty set for non-HTTP or OAuth servers.
+ * Vars referenced by a Bearer `${env:VAR}` / `${VAR}` Authorization header on an
+ * HTTP server. Cursor reads `${env:VAR}` from the process environment at startup
+ * (not envFile — stdio only). VS Code twins get envFile on sync. Callers surface
+ * setup hints (shell profile one-liner) rather than a plain missing-secret warning.
+ * Returns an empty set for non-HTTP servers without Bearer placeholders.
  */
 export function httpBearerVarsForMcpServer(config) {
   const vars = new Set();

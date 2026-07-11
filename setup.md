@@ -76,7 +76,7 @@ To add more servers later, edit `root-config/.agents/mcp.json` only — `npm run
 
 ### 4.1 MCP secrets
 
-MCP servers that need tokens load them from **`.env.local`** at the parent workspace root. Open the **parent directory** (not a single project repo) in your editor so MCP paths resolve correctly. `npm run sync` wraps secret-bearing **stdio** servers with a built-in env loader — no direnv, no terminal sourcing, no extra packages.
+MCP servers that need tokens load them from **`.env.local`** at the parent workspace root. Open the **parent directory** (not a single project repo) in your editor so MCP paths resolve correctly.
 
 **One-time setup** (from parent workspace root):
 
@@ -84,13 +84,62 @@ MCP servers that need tokens load them from **`.env.local`** at the parent works
 cp .env.example .env.local   # fill in your tokens
 ```
 
-Then **restart Cursor or Claude Code** (MCP reads config at startup).
+Then **restart your editor** (MCP reads config at startup).
 
 `.env.local` is gitignored. `.env.example` lives in `root-config/` and is symlinked to the parent root. OAuth HTTP servers (e.g. Slack) use the editor's sign-in flow — no `.env.local` entry needed.
 
-Run `npm run mcp:check-secrets` for a non-fatal hint if tokens are missing, `.env.local` is absent, or placeholders are still empty (also runs on every `postinstall`). It also warns about HTTP servers using a Bearer `${VAR}` header — Cursor cannot expand those from `.env.local`, so prefer the server's OAuth endpoint.
+#### Stdio servers (automatic)
 
-**Codex + OAuth HTTP servers:** the generated `.codex/config.toml` sets `experimental_use_rmcp_client = true` and emits a `url` for each HTTP server. For OAuth servers, run the one-time `codex mcp login <name>` (the sync output lists the exact commands). Note: GitHub's Copilot MCP (`api.githubcopilot.com/mcp/`) only supports OAuth for first-party clients (Cursor, VS Code, Claude); in Codex it requires a PAT via a Bearer `${VAR}` header instead — or just use Cursor/VS Code for GitHub.
+`npm run sync` wraps secret-bearing **stdio** servers that use `${VAR}` placeholders with a built-in env loader (`mcp-load-env.mjs`). Those read `.env.local` directly — no shell profile changes, no direnv, no extra packages.
+
+Cursor also supports `envFile: "${workspaceFolder}/.env.local"` on stdio servers natively; the env loader is the workspace default so secrets work the same in Claude Code and other tools.
+
+#### HTTP servers with Bearer tokens (Cursor one-time step)
+
+Some remote MCP servers have no OAuth endpoint and need a Bearer token in `headers`, for example:
+
+```json
+"headers": {
+  "Authorization": "Bearer ${env:SONAR_TOKEN}"
+}
+```
+
+Use Cursor's `${env:NAME}` syntax in canonical `mcp.json` for HTTP headers (not plain `${NAME}`).
+
+| Editor | How the token is loaded |
+|--------|-------------------------|
+| **VS Code** | Sync adds `envFile: "${workspaceFolder}/.env.local"` to the MCP twin |
+| **Codex** | `bearer_token_env_var` in `.codex/config.toml` — set the var in your shell |
+| **Cursor** | `${env:NAME}` reads from the **process environment at Cursor startup** — not from `envFile` (stdio only) |
+
+So for **Cursor**, load `.env.local` into the process environment before Cursor starts:
+
+**macOS / Linux (bash or zsh)** — add this **one-time** line to `~/.zshrc` or `~/.bashrc` (adjust the path to your parent workspace root):
+
+```bash
+[ -f "$HOME/dev/<your-org>/.env.local" ] && set -a && source "$HOME/dev/<your-org>/.env.local" && set +a
+```
+
+**Windows (PowerShell)** — add to your PowerShell profile, or run before starting Cursor:
+
+```powershell
+$envFile = "$env:USERPROFILE\dev\<your-org>\.env.local"
+if (Test-Path $envFile) { Get-Content $envFile | ForEach-Object { if ($_ -match '^\s*([^#=]+)=(.*)$') { Set-Item -Path "env:$($matches[1].Trim())" -Value $matches[2].Trim() } } }
+```
+
+Alternatively, set **User environment variables** manually (Settings → System → Environment variables) from the keys in `.env.local`.
+
+Restart Cursor after changes. If Bearer headers still send the literal `${env:VAR}` string, Cursor did not inherit the variables:
+
+- **macOS:** launch Cursor from Terminal after `source ~/.zshrc`, or set session vars with `launchctl setenv` before opening from Dock
+- **Linux:** add vars to `/etc/environment` or `~/.pam_environment`, or always launch from a login shell
+- **Windows:** use User/System environment variables and fully restart Cursor (not just reload window)
+
+Prefer OAuth HTTP servers (`{ "type": "http", "url": "..." }` with no Bearer header) whenever the provider supports it.
+
+Run `npm run mcp:check-secrets` for a non-fatal hint if tokens are missing, `.env.local` is absent, placeholders are still empty, or HTTP Bearer servers need the Cursor shell step above (also runs on every `postinstall`).
+
+**Codex + OAuth HTTP servers:** the generated `.codex/config.toml` sets `experimental_use_rmcp_client = true` and emits a `url` for each HTTP server. For OAuth servers, run the one-time `codex mcp login <name>` (the sync output lists the exact commands). Note: GitHub's Copilot MCP (`api.githubcopilot.com/mcp/`) only supports OAuth for first-party clients (Cursor, VS Code, Claude); in Codex it requires a PAT via a Bearer `${env:VAR}` header instead — or just use Cursor/VS Code for GitHub.
 
 ## 5. AI Agent Environment
 
@@ -179,5 +228,6 @@ If you have no `aiworkspace` devDependency (older layout), upgrade uses `git fet
 | MCP configs missing at parent root | `cd workspace && npm run sync` (or `npm run skills:setup`), verify `ls -la ../.agents/mcp.json` |
 | Skills not showing up | `cd workspace && npm run skills:setup`, verify `ls root-config/.agents/skills/` |
 | MCP server red/error | Click server name in Cursor Settings -> MCP for details, restart Cursor |
+| HTTP MCP Bearer auth fails in Cursor | See `<workspace-repo>/setup.md` §4.1 — Unix: `~/.zshrc` source line; Windows: User env vars or PowerShell profile |
 | `npm install` fails on postinstall | Run `node scripts/skills/setup-skills.mjs` manually to see errors |
 | `npm run upgrade` fails | With `aiworkspace` in devDependencies: run `npm install` then retry. Without it: `git remote -v`, add upstream `https://github.com/a-tokyo/aiworkspace.git` |
