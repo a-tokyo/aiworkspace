@@ -165,7 +165,7 @@ describe("shellQuotedPath", () => {
   it("wraps path in double quotes", () => {
     assert.equal(shellQuotedPath("/tmp/foo"), '"/tmp/foo"');
   });
-  it("escapes spaces, quotes, backslashes, $, and backticks", () => {
+  it("escapes quotes, backslashes, $, and backticks (spaces are safe in quotes)", () => {
     const raw = '/tmp/my "$dir`\\and$vars';
     const quoted = shellQuotedPath(raw);
     assert.equal(quoted, '"/tmp/my \\"\\$dir\\`\\\\and\\$vars"');
