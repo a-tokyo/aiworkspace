@@ -1,0 +1,8 @@
+---
+description: Multi-repo workspace conventions
+alwaysApply: true
+---
+- Open the parent workspace root (e.g. `~/dev/<your-org>/`) when working across repos.
+- Prefer the nearest `AGENTS.md` and `.agents/skills/` to the code being changed.
+- Workspace-wide MCP and agent configs live in `<workspace-repo>/root-config/` and mirror to the parent root on `npm run sync`.
+- Disable optional MCP servers you do not use in your editor Settings — definitions stay team-shared in `.agents/mcp.json`.
