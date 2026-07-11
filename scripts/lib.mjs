@@ -23,6 +23,17 @@ export const CANONICAL_SKILLS = join(ROOT_CONFIG, ".agents", "skills");
 
 export const SYMLINK_TYPE = platform() === "win32" ? "junction" : undefined;
 
+/** Windows: `junction` for directories, `file` for files; undefined on Unix. */
+export function symlinkTypeFor(target, linkPath) {
+  if (platform() !== "win32") return undefined;
+  try {
+    const absTarget = resolve(dirname(resolve(linkPath)), target);
+    return lstatSync(absTarget).isDirectory() ? "junction" : "file";
+  } catch {
+    return "junction";
+  }
+}
+
 // Files in root-config/ that should NOT be mirrored to the parent root.
 export const MIRROR_SKIP = new Set(["README.md", "skills-lock.json"]);
 
@@ -118,7 +129,7 @@ export function safeSymlink(target, linkPath, { quiet = false, replace = false, 
   };
 
   try {
-    symlinkSync(target, linkPath, SYMLINK_TYPE);
+    symlinkSync(target, linkPath, symlinkTypeFor(target, linkPath));
     log(`  ✓ ${rel} → ${target}`);
     return true;
   } catch {

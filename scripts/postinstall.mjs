@@ -39,19 +39,21 @@ function exitOnFail(result, label) {
 trySkillsInstall(REPO_DIR);
 trySkillsInstall(ROOT_CONFIG);
 
-const setup = spawnSync("node", [join("scripts", "skills", "setup-skills.mjs"), "--ensure"], {
+const node = process.execPath;
+
+const setup = spawnSync(node, [join("scripts", "skills", "setup-skills.mjs"), "--ensure"], {
   cwd: REPO_DIR,
   stdio: "inherit",
 });
 exitOnFail(setup, "setup-skills.mjs");
 
-const hooks = spawnSync("node", [join("scripts", "install-hooks.mjs")], {
+const hooks = spawnSync(node, [join("scripts", "install-hooks.mjs")], {
   cwd: REPO_DIR,
   stdio: "inherit",
 });
 exitOnFail(hooks, "install-hooks.mjs");
 
-spawnSync("node", [join("scripts", "mcp-check-secrets.mjs")], {
+spawnSync(node, [join("scripts", "mcp-check-secrets.mjs")], {
   cwd: REPO_DIR,
   stdio: "inherit",
 });
