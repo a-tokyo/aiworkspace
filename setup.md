@@ -88,7 +88,9 @@ Then **restart Cursor or Claude Code** (MCP reads config at startup).
 
 `.env.local` is gitignored. `.env.example` lives in `root-config/` and is symlinked to the parent root. OAuth HTTP servers (e.g. Slack) use the editor's sign-in flow — no `.env.local` entry needed.
 
-Run `npm run mcp:check-secrets` for a non-fatal hint if tokens are missing (also runs on postinstall when `.env.local` exists).
+Run `npm run mcp:check-secrets` for a non-fatal hint if tokens are missing (also runs on postinstall when `.env.local` exists). It also warns about HTTP servers using a Bearer `${VAR}` header — Cursor cannot expand those from `.env.local`, so prefer the server's OAuth endpoint.
+
+**Codex + OAuth HTTP servers:** the generated `.codex/config.toml` sets `experimental_use_rmcp_client = true` and emits a `url` for each HTTP server. For OAuth servers, run the one-time `codex mcp login <name>` (the upgrade output lists the exact commands). Note: GitHub's Copilot MCP (`api.githubcopilot.com/mcp/`) only supports OAuth for first-party clients (Cursor, VS Code, Claude); in Codex it requires a PAT via a Bearer `${VAR}` header instead — or just use Cursor/VS Code for GitHub.
 
 ## 5. AI Agent Environment
 

@@ -234,17 +234,49 @@ function serverToCodexSection(name, config) {
   return lines.join("\n");
 }
 
+function codexBearerVar(config) {
+  const auth = config.headers?.Authorization;
+  const m = typeof auth === "string"
+    && auth.match(/^Bearer\s+\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}$/);
+  return m ? m[1] : null;
+}
+
+/**
+ * Project an HTTP MCP server to Codex. Emits `url` for every streamable-HTTP
+ * server; adds `bearer_token_env_var` when the canonical config carries a
+ * Bearer ${VAR} header. OAuth-only servers get just `url` — Codex authenticates
+ * them via `codex mcp login <name>` (needs experimental_use_rmcp_client = true,
+ * injected into the preamble by emitCodexToml).
+ */
 function serverToCodexHttpSection(name, config) {
   if (config.type !== "http" || !config.url) return null;
-  const auth = config.headers?.Authorization;
-  const bearerMatch = typeof auth === "string"
-    && auth.match(/^Bearer\s+\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}$/);
-  if (!bearerMatch) return null;
-  return [
+  const lines = [
     `[${codexServerTable(name)}]`,
     `url = ${JSON.stringify(config.url)}`,
-    `bearer_token_env_var = ${JSON.stringify(bearerMatch[1])}`,
-  ].join("\n");
+  ];
+  const bearerVar = codexBearerVar(config);
+  if (bearerVar) lines.push(`bearer_token_env_var = ${JSON.stringify(bearerVar)}`);
+  return lines.join("\n");
+}
+
+const CODEX_RMCP_FLAG = "experimental_use_rmcp_client = true";
+
+/**
+ * Ensure the top-level rmcp flag is present in the Codex preamble. It must
+ * precede the first table header, so insert it before any existing table
+ * (the managed file's preamble is normally comment-only).
+ */
+function ensureCodexRmcpFlag(preamble) {
+  if (new RegExp(`^\\s*${CODEX_RMCP_FLAG.split(" ")[0]}\\s*=`, "m").test(preamble)) {
+    return preamble;
+  }
+  const lines = preamble ? preamble.split("\n") : [];
+  const tableIdx = lines.findIndex((l) => /^\s*\[/.test(l));
+  if (tableIdx === -1) {
+    return preamble ? `${preamble}\n${CODEX_RMCP_FLAG}` : CODEX_RMCP_FLAG;
+  }
+  lines.splice(tableIdx, 0, CODEX_RMCP_FLAG, "");
+  return lines.join("\n");
 }
 
 /** Transform canonical ${VAR} placeholders to VS Code ${env:VAR} syntax. */
@@ -283,16 +315,23 @@ export function toVscodeServers(merged) {
 /** Emit Codex TOML as a projection of merged JSON (preamble preserved, MCP sections regenerated). */
 function emitCodexToml(merged, existingToml = "") {
   const mcpMarker = existingToml.match(/^[\s\S]*?(?=^\[mcp_servers\.)/m);
-  const preamble = mcpMarker ? mcpMarker[0].trimEnd() : existingToml.trimEnd();
+  let preamble = mcpMarker ? mcpMarker[0].trimEnd() : existingToml.trimEnd();
+
+  const hasHttp = Object.values(merged).some((c) => c?.type === "http" && c.url);
+  if (hasHttp) preamble = ensureCodexRmcpFlag(preamble);
+
   const blocks = [];
+  const oauthLogin = [];
   for (const [name, config] of Object.entries(merged)) {
     const block = serverToCodexSection(name, config) ?? serverToCodexHttpSection(name, config);
-    if (!block && config.type === "http") {
-      console.warn(
-        `  ⚠ No Codex projection for "${name}" — needs Bearer \${VAR} auth or manual Codex config`,
-      );
-    }
     if (block) blocks.push(block);
+    if (config?.type === "http" && config.url && !codexBearerVar(config)) {
+      oauthLogin.push(name);
+    }
+  }
+  if (oauthLogin.length) {
+    const cmds = oauthLogin.map((n) => `codex mcp login ${n}`).join(", ");
+    console.log(`  ℹ Codex: run one-time OAuth login for HTTP servers — ${cmds}`);
   }
   const body = blocks.join("\n\n");
   if (!body) return preamble ? `${preamble}\n` : "";

@@ -574,6 +574,63 @@ describe("upgradeMcp", () => {
     assert.ok(codex.includes("bearer_token_env_var = \"MY_TOKEN\""));
   });
 
+  it("codex projects OAuth-only HTTP servers with rmcp flag and no bearer token", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const canonical = join(ws, "root-config", ".agents", "mcp.json");
+    mkdirSync(dirname(canonical), { recursive: true });
+    writeFileSync(
+      canonical,
+      JSON.stringify({
+        mcpServers: {
+          slack: { type: "http", url: "https://mcp.slack.com/mcp" },
+        },
+      }, null, 2) + "\n",
+    );
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const codex = readFileSync(join(ws, "root-config", ".codex", "config.toml"), "utf8");
+    assert.ok(codex.includes("experimental_use_rmcp_client = true"), "rmcp flag injected for HTTP");
+    assert.ok(codex.includes("[mcp_servers.slack]"), "oauth http server projected");
+    assert.ok(codex.includes('url = "https://mcp.slack.com/mcp"'), "url emitted");
+    assert.ok(!codex.includes("bearer_token_env_var"), "no bearer token for oauth-only server");
+
+    const flagIdx = codex.indexOf("experimental_use_rmcp_client");
+    const firstTableIdx = codex.search(/^\[/m);
+    assert.ok(flagIdx !== -1 && flagIdx < firstTableIdx, "flag must precede the first table");
+  });
+
+  it("codex inserts rmcp flag before existing preamble tables", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const canonical = join(ws, "root-config", ".agents", "mcp.json");
+    mkdirSync(dirname(canonical), { recursive: true });
+    writeFileSync(
+      canonical,
+      JSON.stringify({
+        mcpServers: { slack: { type: "http", url: "https://mcp.slack.com/mcp" } },
+      }, null, 2) + "\n",
+    );
+    const codexToml = join(ws, "root-config", ".codex", "config.toml");
+    mkdirSync(dirname(codexToml), { recursive: true });
+    writeFileSync(codexToml, "# team settings\n\n[tool.codex]\nmodel = \"gpt-4\"\n");
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const codex = readFileSync(codexToml, "utf8");
+    assert.ok(codex.includes("[tool.codex]"), "preamble table preserved");
+    const flagIdx = codex.indexOf("experimental_use_rmcp_client");
+    const tableIdx = codex.indexOf("[tool.codex]");
+    assert.ok(flagIdx !== -1 && flagIdx < tableIdx, "flag must precede the first preamble table");
+  });
+
+  it("codex does not add rmcp flag when there are no HTTP servers", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const codex = readFileSync(join(ws, "root-config", ".codex", "config.toml"), "utf8");
+    assert.ok(!codex.includes("experimental_use_rmcp_client"), "no rmcp flag without HTTP servers");
+  });
+
   it("mcpLoadEnvRel derives path from repo directory name", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
