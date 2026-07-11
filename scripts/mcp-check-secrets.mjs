@@ -4,7 +4,9 @@
  * @managed by aiworkspace — see scripts/README.md before editing.
  *
  * Warn when MCP config references secret env vars missing from parent-root `.env.local`.
- * Exits silently when canonical MCP config or `.env.local` is absent (fresh clones).
+ * Exits silently when the canonical MCP config is absent; the missing-secret warnings also
+ * require `.env.local`. HTTP Bearer `${VAR}` header portability hints are emitted regardless
+ * of whether `.env.local` exists.
  */
 
 import { existsSync } from "node:fs";
