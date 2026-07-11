@@ -114,7 +114,7 @@ describe("mcp-check-secrets", () => {
     assert.match(`${r.stderr}${r.stdout}`, /MY_API_KEY/);
   });
 
-  it("warns about HTTP Bearer servers and recommends OAuth", () => {
+  it("warns about HTTP Bearer servers with Cursor shell setup hint", () => {
     tmp = makeTmpDir();
     const ws = join(tmp.dir, "ws");
     seedCheckScripts(ws);
@@ -126,7 +126,7 @@ describe("mcp-check-secrets", () => {
           github: {
             type: "http",
             url: "https://api.githubcopilot.com/mcp/",
-            headers: { Authorization: "Bearer ${GITHUB_PAT}" },
+            headers: { Authorization: "Bearer ${env:GITHUB_PAT}" },
           },
         },
       }, null, 2) + "\n",
@@ -142,7 +142,9 @@ describe("mcp-check-secrets", () => {
     assert.match(out, /Bearer token header/);
     assert.match(out, /github/);
     assert.match(out, /GITHUB_PAT/);
-    assert.match(out, /OAuth/);
+    assert.match(out, /~\/.zshrc/);
+    assert.match(out, /source .*\.env\.local/);
+    assert.match(out, /setup\.md §4\.1/);
   });
 
   it("does not treat OAuth HTTP servers as secret-bearing", () => {

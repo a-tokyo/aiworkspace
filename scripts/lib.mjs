@@ -522,10 +522,11 @@ export function secretVarsForMcpServer(_name, config) {
 }
 
 /**
- * Vars referenced by a Bearer `${VAR}` Authorization header on an HTTP server.
- * These cannot be expanded from `.env.local` by every editor (notably Cursor),
- * so callers surface them as an OAuth-preferred limitation rather than a plain
- * missing-secret warning. Returns an empty set for non-HTTP or OAuth servers.
+ * Vars referenced by a Bearer `${env:VAR}` / `${VAR}` Authorization header on an
+ * HTTP server. Cursor reads `${env:VAR}` from the process environment at startup
+ * (not envFile — stdio only). VS Code twins get envFile on sync. Callers surface
+ * setup hints (shell profile one-liner) rather than a plain missing-secret warning.
+ * Returns an empty set for non-HTTP servers without Bearer placeholders.
  */
 export function httpBearerVarsForMcpServer(config) {
   const vars = new Set();

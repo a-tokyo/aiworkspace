@@ -37,16 +37,21 @@ for (const [name, config] of Object.entries(parsed.mcpServers)) {
 }
 
 if (httpBearer.length > 0) {
+  const envLocalPath = join(WORKSPACE, ".env.local");
   console.warn("\n⚠ MCP HTTP servers using a Bearer token header:");
   for (const { name, vars } of httpBearer) {
-    console.warn(`  - ${name} (Authorization: Bearer \${${vars.join(", ")}})`);
+    console.warn(`  - ${name} (Authorization: Bearer \${env:${vars.join(", ")}})`);
   }
   console.warn(
-    "\nNot every editor expands .env.local into HTTP headers (Cursor does not).",
+    "\nCursor resolves HTTP headers via ${env:VAR} at startup (not envFile). VS Code twins use envFile automatically.",
   );
   console.warn(
-    "Prefer the server's OAuth endpoint (plain { type: \"http\", url }) so sign-in happens in the editor — no token needed.\n",
+    "Prefer OAuth HTTP servers when available. Otherwise, add this one-time line to ~/.zshrc or ~/.bashrc, then restart Cursor:",
   );
+  console.warn(
+    `  [ -f ${envLocalPath} ] && set -a && source ${envLocalPath} && set +a`,
+  );
+  console.warn("  See setup.md §4.1 for details.\n");
 }
 
 if (required.size === 0) process.exit(0);

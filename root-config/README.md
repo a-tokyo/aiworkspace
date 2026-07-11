@@ -64,7 +64,7 @@ Add files and directories as needed — the mirror picks them up automatically.
 
 Edit `.agents/mcp.json` to add or change servers. `npm run sync` refreshes the Codex and VS Code twins from canonical automatically. Claude Code and Cursor pick up changes via symlinks (or a local copy when symlinks are unavailable — copies are not committed).
 
-**Secrets:** copy `.env.example` to `.env.local` at the parent workspace root, fill tokens, restart the editor. See `setup.md` §4.1.
+**Secrets:** copy `.env.example` to `.env.local` at the parent workspace root, fill tokens, restart the editor. Stdio servers load `.env.local` automatically; **Cursor** users with HTTP Bearer MCP servers also need a one-time `source .env.local` line in `~/.zshrc` — see `setup.md` §4.1.
 
 **Mirror all, no opt-out.** Every developer gets all tool configs (Cursor, Claude Code, Codex, VS Code). `npm install` and git hooks recreate them at the parent root — deleting a parent-root `.cursor/` or `.codex/` folder does not opt out; setup will restore it. Unused symlinks are harmless. Per-project overrides still win via nearest-wins (`<project>/.cursor/mcp.json` etc.).
 

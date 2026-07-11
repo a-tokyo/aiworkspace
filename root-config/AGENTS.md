@@ -72,14 +72,19 @@ On first use in a project, the tool asks you to approve the project MCP servers.
 
 ## MCP authentication
 
-Secret-bearing MCP servers load tokens from **`.env.local`** at the parent workspace root. `npm run sync` wraps stdio servers that use `${VAR}` placeholders with `<workspace-repo>/scripts/mcp-load-env.mjs` (stdlib, no extra npm deps). VS Code twins also get `envFile: "${workspaceFolder}/.env.local"` for stdio wraps and HTTP servers with placeholders.
+Secret-bearing MCP servers load tokens from **`.env.local`** at the parent workspace root.
+
+| Server type | How secrets load |
+|-------------|------------------|
+| **Stdio** with `${VAR}` | `npm run sync` wraps with `mcp-load-env.mjs` — reads `.env.local` automatically |
+| **HTTP OAuth** | Editor sign-in (Slack, Atlassian, etc.) — no `.env.local` |
+| **HTTP Bearer** `${env:VAR}` | VS Code twin: `envFile`. **Cursor:** one-time `source .env.local` in `~/.zshrc` — see `setup.md` §4.1 |
 
 **Setup (each developer, once):**
 
 1. `cp .env.example .env.local` at the parent workspace root
 2. Fill in tokens (never commit `.env.local`)
-3. Restart Cursor / Claude Code
+3. If you use HTTP Bearer MCP servers in **Cursor**, add the shell one-liner from `setup.md` §4.1 to `~/.zshrc` / `~/.bashrc`
+4. Restart your editor
 
-OAuth-only servers (Slack, Atlassian) use the editor sign-in flow — not auto-generated for Codex.
-
-Check tokens: `npm run mcp:check-secrets`
+Check tokens and Cursor HTTP hints: `npm run mcp:check-secrets`
