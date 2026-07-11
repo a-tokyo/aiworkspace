@@ -32,6 +32,11 @@ export function resolveTemplateRoot(repoDir = REPO_DIR) {
  */
 export function runSync({ templateRoot, repoDir = REPO_DIR } = {}) {
   const root = templateRoot ?? resolveTemplateRoot(repoDir);
+  if (!root || !existsSync(root)) {
+    throw new Error(
+      "MCP template not found — run `npm run sync` from your workspace repo (needs root-config/ or node_modules/aiworkspace).",
+    );
+  }
 
   console.log("\n🔄 Syncing workspace configs...\n");
 

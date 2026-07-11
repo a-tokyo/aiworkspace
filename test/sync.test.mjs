@@ -31,9 +31,22 @@ describe("resolveTemplateRoot", () => {
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
     assert.equal(resolveTemplateRoot(ws), join(ws, "root-config"));
   });
+
+  it("returns null when no template root exists", () => {
+    tmp = makeTmpDir();
+    assert.equal(resolveTemplateRoot(tmp.dir), null);
+  });
 });
 
 describe("runSync", () => {
+  it("fails fast when template root is missing", () => {
+    tmp = makeTmpDir();
+    assert.throws(
+      () => runSync({ repoDir: tmp.dir }),
+      /MCP template not found/,
+    );
+  });
+
   it("regenerates MCP twins and parent symlinks without modifying scripts/", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
