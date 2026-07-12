@@ -10,9 +10,9 @@ Manage shared AI agent skills, configs, and automation across multi-repo workspa
 
 <br />
 
-**The problem**: AI agents only see the repo they run in. An agent working in a frontend repo has no visibility into the backend, API contracts, or shared conventions -- so it assumes and hallucinates. On top of that, each developer configures AI tools differently, so skills, instructions, and rules drift between projects and team members.
+**The problem**: AI agents only see the repo they run in. An agent working in a frontend repo has no visibility into the backend, API contracts, or shared conventions -- so it assumes and hallucinates. On top of that, each developer configures AI tools differently, so skills, instructions, rules, and MCP servers drift between projects and team members.
 
-**The solution**: A single `workspace/` repo that acts as the canonical source. Running `npm install` mirrors configs to the parent root, symlinks skills for every AI tool, and installs git hooks to keep everything in sync.
+**The solution**: A single `workspace/` repo that acts as the canonical source. Running `npm install` mirrors configs to the parent root, symlinks skills and MCP servers for every AI tool, and installs git hooks to keep everything in sync.
 
 ## Quick Start
 
@@ -43,7 +43,10 @@ cd workspace && npm install
 ├── workspace/                          <- this repo
 │   ├── root-config/                    <- canonical source for root-level AI configs
 │   │   ├── AGENTS.md                   <- standing instructions for all AI tools
+│   │   ├── .agents/mcp.json            <- canonical MCP servers (single source of truth)
 │   │   ├── .agents/skills/             <- workspace-wide skills
+│   │   ├── .mcp.json, .cursor/, .codex/, .vscode/   <- per-editor configs (symlinked or generated)
+│   │   ├── .env.example                <- template for MCP secrets (-> .env.local at root)
 │   │   └── skills-lock.json            <- lockfile for workspace-wide skills
 │   ├── .agents/skills/                 <- workspace project-specific skills
 │   ├── scripts/                        <- automation (setup, hooks, skill wrappers)
@@ -64,6 +67,7 @@ Everything follows **nearest-wins**: the closer a file is to the code being chan
 | Instructions | `root-config/AGENTS.md` synced to root | `<project>/AGENTS.md` |
 | Skills | `root-config/.agents/skills/` symlinked everywhere | `<project>/.agents/skills/` |
 | Cursor rules | `root-config/.cursor/rules/` symlinked | `<project>/.cursor/rules/` |
+| MCP servers | `root-config/.agents/mcp.json` synced to root | `<project>/.cursor/mcp.json` |
 | Docs | `docs/` repo (sibling) | `<project>/docs/` |
 
 ## Skills
@@ -83,6 +87,37 @@ npm run skills:setup                                     # re-sync configs and s
 Without `--project`, skills install to `root-config/.agents/skills/` (workspace-wide). With `--project <repo>`, they go to `<repo>/.agents/skills/` (project-only).
 
 Skills are tracked in `skills-lock.json` (source + hash). On `npm install`, they are restored from the lockfile automatically.
+
+## MCP
+
+MCP servers give agents shared tools. Define them once in `root-config/.agents/mcp.json` and every editor picks them up — no per-developer setup. [context7](https://github.com/upstash/context7) (up-to-date library docs) ships bundled.
+
+| File | Editor | How |
+|------|--------|-----|
+| `.agents/mcp.json` | — | canonical, edit this one |
+| `.mcp.json` | Claude Code | symlink |
+| `.cursor/mcp.json` | Cursor | symlink |
+| `.vscode/mcp.json` | VS Code / Copilot | generated on sync |
+| `.codex/config.toml` | Codex | generated on sync |
+
+To add or change a server, edit `.agents/mcp.json`, then regenerate the twins and symlinks:
+
+```bash
+npm run sync
+```
+
+Sync refreshes bundled servers from the aiworkspace template and preserves any servers you added. Local edits to a *bundled* server are overwritten on the next sync — to override one for a single repo, use `<project>/.cursor/mcp.json` (nearest-wins).
+
+To drop a bundled server entirely, list it in `root-config/.agents/mcp-disabled.json` (`{ "disabled": ["context7"] }`) — deleting it from `.agents/mcp.json` alone won't stick, since sync restores bundled servers from the template.
+
+**Secrets.** Servers that need tokens read them from `.env.local` at the parent workspace root:
+
+```bash
+cp .env.example .env.local     # then fill in tokens, and restart your editor
+npm run mcp:check-secrets      # verify tokens are present
+```
+
+Stdio servers using `${VAR}` are wrapped automatically to load `.env.local`. See [setup.md §4.1](setup.md#41-mcp-secrets) for HTTP Bearer servers in Cursor and OAuth sign-in for Codex.
 
 ## Upgrading
 
