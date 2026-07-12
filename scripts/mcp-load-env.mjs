@@ -45,7 +45,13 @@ export function parseDotenv(content) {
     let val;
     const quote = rest[0];
     if (quote === '"' || quote === "'") {
-      const close = rest.indexOf(quote, 1);
+      // Find the closing quote, skipping escaped ones — a double-quoted value may contain
+      // \" (we unescape it below), so a plain indexOf would terminate on it and truncate.
+      let close = -1;
+      for (let i = 1; i < rest.length; i++) {
+        if (quote === '"' && rest[i] === "\\") { i++; continue; }
+        if (rest[i] === quote) { close = i; break; }
+      }
       if (close === -1) {
         // Unterminated quote — take the remainder verbatim rather than mangling it.
         val = rest.slice(1);

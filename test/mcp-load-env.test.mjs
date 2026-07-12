@@ -35,6 +35,19 @@ describe("mcp-load-env", () => {
     assert.equal(out["export EXPORTED"], undefined);
   });
 
+  it("parseDotenv does not terminate a value on an escaped quote", () => {
+    // An escaped \" is part of the value, not the closing delimiter.
+    const out = parseDotenv([
+      String.raw`INNER="a\"b"`,
+      String.raw`TRAILING="ends with backslash\\"`,
+      String.raw`SINGLE='no \" unescaping here'`,
+    ].join("\n"));
+
+    assert.equal(out.INNER, 'a"b');
+    assert.equal(out.TRAILING, "ends with backslash\\");
+    assert.equal(out.SINGLE, String.raw`no \" unescaping here`);
+  });
+
   it("parseDotenv skips comments and parses quoted values", () => {
     const out = parseDotenv(`
 # comment
