@@ -14,6 +14,27 @@ let tmp;
 afterEach(() => tmp?.cleanup());
 
 describe("mcp-load-env", () => {
+  it("parseDotenv handles export prefixes, inline comments and escapes", () => {
+    const out = parseDotenv([
+      "export EXPORTED=from-profile",
+      'QUOTED="tok" # trailing note',
+      "BARE=plain # trailing note",
+      "HASH=p@ss#word",
+      'ESCAPED="line1\\nline2"',
+      "EQUALS=a=b=c",
+      "SPACED = spaced",
+    ].join("\n"));
+
+    assert.equal(out.EXPORTED, "from-profile", "export prefix must be stripped");
+    assert.equal(out.QUOTED, "tok", "quotes and inline comment must be stripped");
+    assert.equal(out.BARE, "plain", "inline comment must be stripped");
+    assert.equal(out.HASH, "p@ss#word", "a # inside a value is not a comment");
+    assert.equal(out.ESCAPED, "line1\nline2");
+    assert.equal(out.EQUALS, "a=b=c");
+    assert.equal(out.SPACED, "spaced");
+    assert.equal(out["export EXPORTED"], undefined);
+  });
+
   it("parseDotenv skips comments and parses quoted values", () => {
     const out = parseDotenv(`
 # comment
@@ -78,7 +99,7 @@ BAZ="quoted"
     assert.equal(env.API_KEY, "secret");
   });
 
-  it("--exec passes env vars to child process", () => {
+  it("--exec passes --only env vars to child process", () => {
     tmp = makeTmpDir();
     const ws = join(tmp.dir, "workspace");
     const scripts = join(ws, "scripts");
@@ -89,9 +110,47 @@ BAZ="quoted"
     cpSync(SCRIPT, join(scripts, "mcp-load-env.mjs"));
 
     const r = spawnSync(process.execPath, [
-      join(scripts, "mcp-load-env.mjs"), "--exec", "--", process.execPath, child,
+      join(scripts, "mcp-load-env.mjs"),
+      "--only", "TEST_MCP_SECRET", "--exec", "--", process.execPath, child,
     ], { cwd: ws, encoding: "utf8" });
     assert.equal(r.status, 0, r.stderr);
     assert.equal(r.stdout.trim(), "from-file");
+  });
+
+  it("--exec without --only passes no .env.local vars to the child", () => {
+    tmp = makeTmpDir();
+    const ws = join(tmp.dir, "workspace");
+    const scripts = join(ws, "scripts");
+    const child = join(tmp.dir, "print-env.mjs");
+    writeFileSync(join(tmp.dir, ".env.local"), "TEST_MCP_SECRET=from-file\nOTHER_SECRET=nope\n");
+    writeFileSync(child, `console.log(process.env.TEST_MCP_SECRET || "none");\n`);
+    mkdirSync(scripts, { recursive: true });
+    cpSync(SCRIPT, join(scripts, "mcp-load-env.mjs"));
+
+    // Default-deny: handing the child every secret in .env.local is not the fallback.
+    const r = spawnSync(process.execPath, [
+      join(scripts, "mcp-load-env.mjs"), "--exec", "--", process.execPath, child,
+    ], { cwd: ws, encoding: "utf8" });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout.trim(), "none");
+  });
+
+  it("--exec expands ${VAR} placeholders in child args", () => {
+    tmp = makeTmpDir();
+    const ws = join(tmp.dir, "workspace");
+    const scripts = join(ws, "scripts");
+    const child = join(tmp.dir, "print-arg.mjs");
+    writeFileSync(join(tmp.dir, ".env.local"), "FOO_TOKEN=tok-123\n");
+    writeFileSync(child, `console.log(process.argv[2] || "");\n`);
+    mkdirSync(scripts, { recursive: true });
+    cpSync(SCRIPT, join(scripts, "mcp-load-env.mjs"));
+
+    // The child used to receive the literal string "${FOO_TOKEN}" as its API key.
+    const r = spawnSync(process.execPath, [
+      join(scripts, "mcp-load-env.mjs"),
+      "--only", "FOO_TOKEN", "--exec", "--", process.execPath, child, "${FOO_TOKEN}",
+    ], { cwd: ws, encoding: "utf8" });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout.trim(), "tok-123");
   });
 });

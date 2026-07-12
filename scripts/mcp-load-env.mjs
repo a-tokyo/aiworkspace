@@ -17,21 +17,62 @@ const REPO_DIR = dirname(SCRIPT_DIR);
 const WORKSPACE = dirname(REPO_DIR);
 const ENV_LOCAL = join(WORKSPACE, ".env.local");
 
+/**
+ * Parse .env.local content.
+ *
+ * Handles the shapes people actually write: an `export ` prefix (pasted from a shell
+ * profile), inline `# comments`, and quoted values. Each of these used to corrupt the
+ * value silently — `FOO="tok" # note` yielded `"tok" # note`, quotes and all — which
+ * surfaces much later as a baffling auth failure inside an MCP server.
+ *
+ * Not supported: values spanning multiple lines. Escapes (\n, \t, \\, \") are unescaped
+ * inside double quotes, which covers the PEM-key case.
+ */
 export function parseDotenv(content) {
   const out = {};
   for (const line of content.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
+
+    const withoutExport = trimmed.replace(/^export\s+/, "");
+    const eq = withoutExport.indexOf("=");
     if (eq <= 0) continue;
-    let key = trimmed.slice(0, eq).trim();
-    let val = trimmed.slice(eq + 1).trim();
-    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-      val = val.slice(1, -1);
+
+    const key = withoutExport.slice(0, eq).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    const rest = withoutExport.slice(eq + 1).trim();
+
+    let val;
+    const quote = rest[0];
+    if (quote === '"' || quote === "'") {
+      const close = rest.indexOf(quote, 1);
+      if (close === -1) {
+        // Unterminated quote — take the remainder verbatim rather than mangling it.
+        val = rest.slice(1);
+      } else {
+        val = rest.slice(1, close);
+        if (quote === '"') {
+          val = val.replace(/\\([nrt\\"])/g, (_, c) =>
+            ({ n: "\n", r: "\r", t: "\t", "\\": "\\", '"': '"' })[c]);
+        }
+      }
+    } else {
+      // Unquoted: an inline comment needs whitespace before the #, so a value like
+      // `p@ss#word` survives intact.
+      const comment = rest.search(/\s#/);
+      val = (comment === -1 ? rest : rest.slice(0, comment)).trim();
     }
+
     out[key] = val;
   }
   return out;
+}
+
+/** Expand ${VAR} / ${env:VAR} against the resolved env. */
+export function expandPlaceholders(value, env) {
+  if (typeof value !== "string") return value;
+  return value.replace(/\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name) =>
+    (env[name] !== undefined ? env[name] : match));
 }
 
 export function loadEnvLocal(path = ENV_LOCAL) {
@@ -47,8 +88,11 @@ function resolveEnvVar(varName, fileEnv, shellEnv = process.env) {
 
 export function buildChildEnv(fileEnv, { only = null, maps = [] } = {}) {
   const childEnv = { ...process.env };
+  // Default-deny: without --only/--map, every secret in .env.local used to be handed to
+  // the child process. Generated wrappers always pass --only, so nothing legitimate needs
+  // the blanket injection.
   if (!only?.length && !maps.length) {
-    Object.assign(childEnv, fileEnv);
+    console.error("mcp-load-env: no --only/--map given — passing no .env.local vars to the child");
     return childEnv;
   }
   for (const name of only ?? []) {
@@ -115,10 +159,29 @@ function main() {
   }
 
   const childEnv = buildChildEnv(fileEnv, { only: opts.only, maps: opts.maps });
-  const r = spawnSync(opts.command, opts.args, {
+
+  // The loader only ever set env vars, so a placeholder written into args (e.g.
+  // `--api-key ${FOO_TOKEN}`) reached the child as the literal string "${FOO_TOKEN}"
+  // while check-secrets happily reported it satisfied. Expand argv too.
+  const command = expandPlaceholders(opts.command, childEnv);
+  const args = opts.args.map((a) => expandPlaceholders(a, childEnv));
+
+  // On Windows a shell is needed to run `npx`-style .cmd shims, but it also re-parses
+  // command and args through cmd.exe — so a metacharacter in mcp.json would execute.
+  // Refuse rather than run it.
+  const useShell = process.platform === "win32";
+  if (useShell) {
+    const unsafe = [command, ...args].find((v) => /[&|<>^%"]/.test(v));
+    if (unsafe !== undefined) {
+      console.error(`mcp-load-env: refusing to run — shell metacharacters in "${unsafe}"`);
+      process.exit(1);
+    }
+  }
+
+  const r = spawnSync(command, args, {
     env: childEnv,
     stdio: "inherit",
-    shell: process.platform === "win32",
+    shell: useShell,
   });
   if (r.error) {
     console.error(`mcp-load-env: ${r.error.message}`);

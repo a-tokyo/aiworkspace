@@ -182,7 +182,7 @@ describe("upgradeMcp", () => {
     assert.ok(merged.mcpServers.personal);
   });
 
-  it("skips canonical servers with literal credentials", () => {
+  it("keeps canonical servers with literal credentials rather than deleting them", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
     const canonical = join(ws, "root-config", ".agents", "mcp.json");
@@ -201,7 +201,52 @@ describe("upgradeMcp", () => {
     const merged = JSON.parse(readFileSync(canonical, "utf8"));
     assert.ok(merged.mcpServers.safe);
     assert.ok(merged.mcpServers.context7);
-    assert.equal(merged.mcpServers.has_token, undefined);
+    // Rewriting canonical without it would delete the user's server (and stage the
+    // deletion) — which does not un-commit the credential. Warn, but never erase.
+    assert.ok(merged.mcpServers.has_token, "server with literal credentials must survive sync");
+    assert.equal(merged.mcpServers.has_token.env.API_KEY, "sk-secret");
+  });
+
+  it("does not flag a benign secret-ish key as a literal credential", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const canonical = join(ws, "root-config", ".agents", "mcp.json");
+    mkdirSync(dirname(canonical), { recursive: true });
+    writeFileSync(
+      canonical,
+      JSON.stringify({
+        mcpServers: {
+          // "MAX_TOKENS" matched an unanchored /token/ and got the server deleted.
+          tuned: { type: "stdio", command: "npx", env: { MAX_TOKENS: "4096" } },
+        },
+      }, null, 2) + "\n",
+    );
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const merged = JSON.parse(readFileSync(canonical, "utf8"));
+    assert.equal(merged.mcpServers.tuned.env.MAX_TOKENS, "4096");
+  });
+
+  it("rejects imported servers hiding a token in args or url", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    writeFileSync(
+      join(tmp.dir, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          arg_token: { type: "stdio", command: "npx", args: ["-y", "srv", "--api-key", "sk-live-abcdefghijklmnop"] },
+          url_token: { type: "http", url: "https://mcp.example.com/sse?token=ghp_abcdefghijklmnopqrst" },
+          clean: { type: "http", url: "https://mcp.example.com/sse" },
+        },
+      }, null, 2) + "\n",
+    );
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const canonical = join(ws, "root-config", ".agents", "mcp.json");
+    const merged = JSON.parse(readFileSync(canonical, "utf8"));
+    assert.equal(merged.mcpServers.arg_token, undefined, "token in args must not be imported");
+    assert.equal(merged.mcpServers.url_token, undefined, "token in url must not be imported");
+    assert.ok(merged.mcpServers.clean);
   });
 
   it("migrates missing parent-root servers when canonical exists", () => {
@@ -682,5 +727,116 @@ describe("upgradeMcp", () => {
     runScript(setupScript(ws), ["--ensure"], { cwd: ws });
     assert.ok(lstatSync(join(tmp.dir, ".mcp.json")).isSymbolicLink());
     assert.ok(readFileSync(join(tmp.dir, ".mcp.json"), "utf8").includes("context7"));
+  });
+
+  it("is idempotent — a second sync reports no changes", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    // Any churn here (e.g. TOML array spacing) stages a spurious diff on every consumer
+    // machine, since git hooks run sync on post-merge/post-checkout.
+    const second = upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    assert.deepEqual(second.changedPaths, []);
+  });
+
+  it("preserves non-MCP Codex tables across a sync", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+
+    const codexPath = join(ws, "root-config", ".codex", "config.toml");
+    // A team setting appended *below* the generated MCP blocks was silently deleted.
+    writeFileSync(codexPath, readFileSync(codexPath, "utf8") + '\n[profiles.fast]\nmodel = "gpt-5"\n');
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+
+    const codex = readFileSync(codexPath, "utf8");
+    assert.ok(codex.includes("[profiles.fast]"), "user table below MCP blocks must survive");
+    assert.ok(codex.includes('model = "gpt-5"'));
+    assert.ok(codex.includes("[mcp_servers.context7]"));
+    assert.equal(codex.match(/\[mcp_servers\.context7\]/g).length, 1, "no duplicate MCP tables");
+  });
+
+  it("wraps and emits a type-less stdio server", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const canonical = join(ws, "root-config", ".agents", "mcp.json");
+    mkdirSync(dirname(canonical), { recursive: true });
+    // The bare {command,args,env} shape Claude Code and Cursor both accept.
+    writeFileSync(canonical, JSON.stringify({
+      mcpServers: { bare: { command: "npx", args: ["-y", "bare-mcp"], env: { API_KEY: "${BARE_TOKEN}" } } },
+    }, null, 2) + "\n");
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const merged = JSON.parse(readFileSync(canonical, "utf8"));
+    const bare = merged.mcpServers.bare;
+    assert.equal(bare.command, "node", "type-less stdio server must still be secret-wrapped");
+    assert.ok(bare.args.join(" ").includes("--only BARE_TOKEN"));
+
+    const codex = readFileSync(join(ws, "root-config", ".codex", "config.toml"), "utf8");
+    assert.ok(codex.includes("[mcp_servers.bare]"), "type-less server must reach the Codex twin");
+  });
+
+  it("refreshes a stale wrapper when secrets change, and unwraps when they go", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const canonical = join(ws, "root-config", ".agents", "mcp.json");
+    mkdirSync(dirname(canonical), { recursive: true });
+    const write = (env) => writeFileSync(canonical, JSON.stringify({
+      mcpServers: { srv: { type: "stdio", command: "npx", args: ["-y", "srv"], ...(env ? { env } : {}) } },
+    }, null, 2) + "\n");
+
+    write({ API_KEY: "${FIRST_TOKEN}" });
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    let srv = JSON.parse(readFileSync(canonical, "utf8")).mcpServers.srv;
+    assert.ok(srv.args.join(" ").includes("--only FIRST_TOKEN"));
+
+    // Swap the secret: the wrapper used to freeze, leaving --only stale forever.
+    const wrapped = JSON.parse(readFileSync(canonical, "utf8"));
+    wrapped.mcpServers.srv.env = { API_KEY: "${SECOND_TOKEN}" };
+    writeFileSync(canonical, JSON.stringify(wrapped, null, 2) + "\n");
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    srv = JSON.parse(readFileSync(canonical, "utf8")).mcpServers.srv;
+    const argLine = srv.args.join(" ");
+    assert.ok(argLine.includes("SECOND_TOKEN"), "wrapper must pick up the new secret");
+    assert.ok(!argLine.includes("FIRST_TOKEN"), "stale secret must be dropped");
+    assert.equal(argLine.match(/mcp-load-env\.mjs/g).length, 1, "must not double-wrap");
+
+    // Drop the secret entirely: the server must be unwrapped, not wrapped forever.
+    write(null);
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    srv = JSON.parse(readFileSync(canonical, "utf8")).mcpServers.srv;
+    assert.equal(srv.command, "npx", "server must unwrap once its secrets are gone");
+    assert.deepEqual(srv.args, ["-y", "srv"]);
+  });
+
+  it("honours mcp-disabled.json for a bundled server", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const agents = join(ws, "root-config", ".agents");
+    mkdirSync(agents, { recursive: true });
+    writeFileSync(join(agents, "mcp-disabled.json"), JSON.stringify({ disabled: ["context7"] }, null, 2) + "\n");
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const merged = JSON.parse(readFileSync(join(agents, "mcp.json"), "utf8"));
+    assert.equal(merged.mcpServers.context7, undefined, "a disabled bundled server must not be resurrected");
+
+    const codex = readFileSync(join(ws, "root-config", ".codex", "config.toml"), "utf8");
+    assert.ok(!codex.includes("[mcp_servers.context7]"));
+  });
+
+  it("imports a hand-written root-config mcp file before symlinking over it", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const cursorMcp = join(ws, "root-config", ".cursor", "mcp.json");
+    mkdirSync(dirname(cursorMcp), { recursive: true });
+    // safeSymlink replaces this real file with a symlink — its servers must be rescued.
+    writeFileSync(cursorMcp, JSON.stringify({
+      mcpServers: { handwritten: { type: "stdio", command: "npx", args: ["-y", "hand-mcp"] } },
+    }, null, 2) + "\n");
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const merged = JSON.parse(readFileSync(join(ws, "root-config", ".agents", "mcp.json"), "utf8"));
+    assert.ok(merged.mcpServers.handwritten, "hand-written servers must not be destroyed by the symlink");
+    assert.ok(lstatSync(cursorMcp).isSymbolicLink());
   });
 });

@@ -80,12 +80,23 @@ Add files and directories as needed — the mirror picks them up automatically.
 | Path | Purpose |
 |------|---------|
 | `.agents/mcp.json` | Canonical MCP config (`mcpServers` schema) |
+| `.agents/mcp-disabled.json` | Bundled servers this workspace opts out of (optional) |
 | `.mcp.json` | Symlink to `.agents/mcp.json` — Claude Code |
 | `.cursor/mcp.json` | Symlink to `../.agents/mcp.json` — Cursor |
 | `.codex/config.toml` | Codex MCP twin (TOML, regenerated on `npm run sync`) |
 | `.vscode/mcp.json` | VS Code MCP twin (`servers` schema, regenerated on `npm run sync`) |
 
 Edit `.agents/mcp.json` to add or change servers. `npm run sync` refreshes the Codex and VS Code twins from canonical automatically. Claude Code and Cursor pick up changes via symlinks (or a local copy when symlinks are unavailable — copies are not committed).
+
+**Dropping a bundled server:** deleting it from `.agents/mcp.json` is not enough — sync restores bundled servers from the template, and cannot tell a deliberate removal from a workspace that simply hasn't received it yet. List it in `.agents/mcp-disabled.json` instead:
+
+```json
+{ "disabled": ["context7"] }
+```
+
+Disabled servers are left out of canonical and both twins. (The list lives in its own file because `.agents/mcp.json` *is* `.mcp.json` and `.cursor/mcp.json` via symlink — editors parse it directly, and anything left under `mcpServers` would still be launched.)
+
+Only `[mcp_servers.*]` tables in `.codex/config.toml` are regenerated; other Codex settings you add to that file are preserved.
 
 **Secrets:** copy `.env.example` to `.env.local` at the parent workspace root, fill tokens, restart the editor. Stdio servers load `.env.local` automatically; **Cursor** users with HTTP Bearer MCP servers also need a one-time env-loading step — see `<workspace-repo>/setup.md` §4.1 (`<workspace-repo>` is this repo's directory name, e.g. `workspace`).
 

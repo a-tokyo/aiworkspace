@@ -14,7 +14,7 @@ import {
   REPO_DIR, readMcpJson, isImportableMcpFile, ensureDir, safeSymlink,
   isSymlink, isFile, MCP_TEMPLATE_REL_PATHS,
   collectMcpPlaceholders, hasMcpPlaceholder, mcpLoadEnvRel, isMcpLoadEnvWrapped,
-  extractEnvKeyMaps,
+  extractEnvKeyMaps, parseOnlyVarsFromWrappedArgs, serverKind,
 } from "./lib.mjs";
 
 export { mcpLoadEnvRel } from "./lib.mjs";
@@ -33,8 +33,54 @@ export function isAlreadyWrapped(config) {
   return isMcpLoadEnvWrapped(config);
 }
 
+/**
+ * Reverse wrapStdioWithEnvLoader: recover the inner command/args and the env
+ * placeholders the wrapper absorbed into its `--map` pairs.
+ *
+ * Wrapping used to be one-way (`isAlreadyWrapped` short-circuited every later pass), so a
+ * wrapper froze on first sync: adding a secret left `--only` stale, removing the last one
+ * left the server wrapped forever, and renaming the repo dir left it pointing at a dead
+ * path. Unwrapping first makes the whole transform idempotent and self-healing.
+ */
+export function unwrapStdioEnvLoader(config) {
+  if (!isAlreadyWrapped(config)) return config;
+  const args = config.args ?? [];
+  const execIdx = args.indexOf("--exec");
+  const sep = args.indexOf("--", execIdx === -1 ? 0 : execIdx);
+  if (execIdx === -1 || sep === -1 || sep + 1 >= args.length) return config;
+
+  const next = { ...config, command: args[sep + 1], args: args.slice(sep + 2) };
+  if (!next.args.length) delete next.args;
+
+  // Restore only what the wrapper absorbed. An entry the user has since edited by hand
+  // (swapping ${FIRST_TOKEN} for ${SECOND_TOKEN}) is already present and must win — so a
+  // key already in env is never overwritten, and its now-stale source var is not revived.
+  const env = { ...(config.env ?? {}) };
+  const mappedVars = new Set();
+  for (let i = 0; i < execIdx; i++) {
+    if (args[i] !== "--map" || !args[i + 1]) continue;
+    const entry = args[++i];
+    const at = entry.indexOf(":");
+    if (at <= 0) continue;
+    const childKey = entry.slice(0, at);
+    const sourceVar = entry.slice(at + 1);
+    mappedVars.add(sourceVar);
+    if (!(childKey in env)) env[childKey] = `\${${sourceVar}}`;
+  }
+  // A var whose child key matched its own name carries no --map pair, so --only is the
+  // only record of it. Skip the ones already explained by a --map pair or by the args.
+  const inArgs = collectMcpPlaceholders(next.args ?? []);
+  for (const name of parseOnlyVarsFromWrappedArgs(args) ?? []) {
+    if (name in env || mappedVars.has(name) || inArgs.has(name)) continue;
+    env[name] = `\${${name}}`;
+  }
+  next.env = Object.keys(env).length ? env : undefined;
+  if (!next.env) delete next.env;
+  return next;
+}
+
 export function wrapStdioWithEnvLoader(config, { repoDir = REPO_DIR } = {}) {
-  if (!isServerConfig(config) || config.type !== "stdio" || isAlreadyWrapped(config)) {
+  if (!isServerConfig(config) || serverKind(config) !== "stdio" || isAlreadyWrapped(config)) {
     return config;
   }
   const innerCommand = config.command;
@@ -64,7 +110,14 @@ export function wrapStdioWithEnvLoader(config, { repoDir = REPO_DIR } = {}) {
   return next;
 }
 
-/** Wrap stdio servers that use ${VAR} placeholders with the env loader. */
+/**
+ * Wrap stdio servers that use ${VAR} placeholders with the env loader.
+ *
+ * Unwrap first, so the wrapper is rebuilt from the current config on every sync rather
+ * than frozen at its first shape. Servers are normalized to an explicit `type` — a bare
+ * `{ command, args }` is the standard Claude Code / Cursor shape and must not slip past
+ * the wrap (raw ${VAR} in a committed file) or out of the Codex twin.
+ */
 export function applySecretTransforms(servers, { repoDir = REPO_DIR } = {}) {
   const out = {};
   for (const [name, config] of Object.entries(servers)) {
@@ -73,8 +126,10 @@ export function applySecretTransforms(servers, { repoDir = REPO_DIR } = {}) {
       continue;
     }
 
-    let next = { ...config };
-    if (next.type === "stdio" && needsSecrets(next)) {
+    const kind = serverKind(config);
+    let next = unwrapStdioEnvLoader({ ...config });
+    if (kind) next = { ...next, type: kind };
+    if (kind === "stdio" && needsSecrets(next)) {
       next = wrapStdioWithEnvLoader(next, { repoDir });
     }
 
@@ -112,25 +167,81 @@ function loadTemplateServers(templateRoot) {
   return { servers: parsed.mcpServers };
 }
 
-const SECRET_KEY_PATTERN = /password|credential|secret|token|authorization|api[_-]?key|personal_access_token|(^|_)pat$|(^|_)token$/i;
+/**
+ * Secret-ish config keys, matched on delimiter boundaries.
+ *
+ * Anchoring matters: an unanchored `token` also matches MAX_TOKENS, TOKEN_PATH and
+ * TOKENIZER, so a benign `{ MAX_TOKENS: "4096" }` was flagged as a literal credential.
+ * Singular only — TOKENS is a count, TOKEN is a secret.
+ */
+const SECRET_KEY_PATTERN = /(^|[_-])(password|credential|credentials|secret|token|authorization|auth|api[_-]?key|apikey|access[_-]?key|pat)([_-]|$)/i;
+
+/** Shapes of well-known credentials, for values whose key gives nothing away (args, url). */
+const SECRET_VALUE_PATTERN = /\b(sk-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,})\b/;
+
+/** Values that are plainly not credentials, however secret-ish the key looks. */
+function isBenignValue(value) {
+  return /^(\d+|true|false|null)$/i.test(value.trim());
+}
 
 function isServerConfig(config) {
   return config !== null && typeof config === "object" && !Array.isArray(config);
 }
 
+/**
+ * True when a server carries a credential inline rather than a ${VAR} placeholder.
+ *
+ * Scans env/headers by key, and args/url by value shape — a token pasted into
+ * `args: ["--api-key", "sk-live-…"]` or a `?token=` query string is the common case
+ * and used to sail straight through into the committed twins.
+ */
 function hasLiteralCredentials(serverConfig) {
   if (!isServerConfig(serverConfig)) return false;
-  const hasSuspiciousEnv = (obj) => {
+
+  const isLiteral = (v) => typeof v === "string" && v.length > 0 && !v.includes("${");
+
+  const hasSuspiciousEntries = (obj) => {
     if (!obj || typeof obj !== "object") return false;
     return Object.entries(obj).some(
-      ([k, v]) => SECRET_KEY_PATTERN.test(k) && typeof v === "string" && v.length > 0 && !v.includes("${"),
+      ([k, v]) => SECRET_KEY_PATTERN.test(k) && isLiteral(v) && !isBenignValue(v),
     );
   };
+
   const auth = serverConfig.headers?.Authorization;
-  if (typeof auth === "string" && /^Bearer\s+\S+$/i.test(auth) && !auth.includes("${")) {
+  if (typeof auth === "string" && /^Bearer\s+\S/i.test(auth) && !auth.includes("${")) {
     return true;
   }
-  return hasSuspiciousEnv(serverConfig.env) || hasSuspiciousEnv(serverConfig.headers);
+  if (hasSuspiciousEntries(serverConfig.env) || hasSuspiciousEntries(serverConfig.headers)) {
+    return true;
+  }
+
+  const args = Array.isArray(serverConfig.args) ? serverConfig.args : [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (!isLiteral(arg)) continue;
+    if (SECRET_VALUE_PATTERN.test(arg)) return true;
+    // --api-key sk-… / --token=… — flag the value following a secret-ish flag.
+    const inline = arg.match(/^--?([A-Za-z0-9_-]+)=(.+)$/);
+    if (inline && SECRET_KEY_PATTERN.test(inline[1]) && !isBenignValue(inline[2])) return true;
+    const flag = arg.match(/^--?([A-Za-z0-9_-]+)$/);
+    if (flag && SECRET_KEY_PATTERN.test(flag[1])) {
+      const next = args[i + 1];
+      if (isLiteral(next) && !next.startsWith("-") && !isBenignValue(next)) return true;
+    }
+  }
+
+  if (isLiteral(serverConfig.url)) {
+    if (SECRET_VALUE_PATTERN.test(serverConfig.url)) return true;
+    const query = serverConfig.url.split("?")[1];
+    if (query) {
+      for (const pair of query.split("&")) {
+        const [k, v = ""] = pair.split("=");
+        if (SECRET_KEY_PATTERN.test(k) && v && !isBenignValue(v)) return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 function importServersFromFile(path, rootConfig, servers, { onlyMissing = false } = {}) {
@@ -163,9 +274,12 @@ function collectUserServers(workspace, rootConfig) {
           console.warn(`  ⚠ Skipping "${name}" in ${canonical} — server config must be an object`);
           continue;
         }
+        // Keep it. Canonical is rewritten from the merged set, so dropping a server here
+        // deletes it from the user's own file (and stages the deletion) — which does not
+        // un-commit the credential, it just destroys config. Warn instead; the guard's job
+        // is to stop new secrets being imported into canonical, below.
         if (hasLiteralCredentials(config)) {
-          console.warn(`  ⚠ Skipping "${name}" in ${canonical} — contains literal credentials (use \${VAR} placeholders)`);
-          continue;
+          console.warn(`  ⚠ "${name}" in ${canonical} contains literal credentials — move them to \${VAR} placeholders + .env.local`);
         }
         servers[name] = config;
       }
@@ -177,10 +291,17 @@ function collectUserServers(workspace, rootConfig) {
     importServersFromFile(join(workspace, ".agents", "mcp.json"), rootConfig, servers, { onlyMissing: true });
     importServersFromFile(join(workspace, ".mcp.json"), rootConfig, servers, { onlyMissing: true });
     importServersFromFile(join(workspace, ".cursor", "mcp.json"), rootConfig, servers, { onlyMissing: true });
+    // These two are normally symlinks to canonical (isImportableMcpFile skips those). When
+    // one is a *real* file, a user hand-wrote servers into it — read them before
+    // ensureMcpEntryLink replaces the file with a symlink, or they are lost.
+    importServersFromFile(join(rootConfig, ".mcp.json"), rootConfig, servers, { onlyMissing: true });
+    importServersFromFile(join(rootConfig, ".cursor", "mcp.json"), rootConfig, servers, { onlyMissing: true });
   } else {
     importServersFromFile(join(workspace, ".agents", "mcp.json"), rootConfig, servers);
     importServersFromFile(join(workspace, ".mcp.json"), rootConfig, servers);
     importServersFromFile(join(workspace, ".cursor", "mcp.json"), rootConfig, servers);
+    importServersFromFile(join(rootConfig, ".mcp.json"), rootConfig, servers);
+    importServersFromFile(join(rootConfig, ".cursor", "mcp.json"), rootConfig, servers);
     const vscodeMcp = join(rootConfig, ".vscode", "mcp.json");
     importServersFromFile(vscodeMcp, rootConfig, servers);
   }
@@ -199,12 +320,41 @@ function collectUserServers(workspace, rootConfig) {
  * To override a bundled server locally, use per-project MCP config
  * (`<project>/.cursor/mcp.json`, nearest-wins) rather than editing canonical.
  */
-function mergeServers(template, user) {
+function mergeServers(template, user, disabled = []) {
+  const off = new Set(disabled);
   const merged = {};
   for (const [name, config] of Object.entries(user)) {
     if (!(name in template)) merged[name] = config;
   }
-  return { ...merged, ...template };
+  for (const [name, config] of Object.entries(template)) {
+    if (!off.has(name)) merged[name] = config;
+  }
+  for (const name of off) delete merged[name];
+  return merged;
+}
+
+/**
+ * Names a workspace has opted out of, from `.agents/mcp-disabled.json`.
+ *
+ * Deleting a bundled server from canonical cannot express intent — sync can't tell a
+ * deliberate removal from a first-time consumer who simply hasn't got it yet, so it
+ * resurrects the server (and stages it). The opt-out lives in a sibling file rather than
+ * canonical because canonical *is* `.mcp.json` / `.cursor/mcp.json` via symlink: an extra
+ * top-level key risks editor schema rejection, and anything left under `mcpServers` would
+ * still be launched by Claude Code. A disabled server must be absent entirely.
+ */
+export function readDisabledServers(rootConfig) {
+  const path = join(rootConfig, ".agents", "mcp-disabled.json");
+  if (!existsSync(path)) return [];
+  try {
+    const data = JSON.parse(readFileSync(path, "utf8"));
+    const list = Array.isArray(data) ? data : data?.disabled;
+    if (!Array.isArray(list)) return [];
+    return list.filter((n) => typeof n === "string" && n);
+  } catch {
+    console.warn(`  ⚠ ${path} could not be parsed — ignoring MCP opt-outs`);
+    return [];
+  }
 }
 
 function codexKeySegment(segment) {
@@ -217,13 +367,18 @@ function codexServerTable(name, suffix = "") {
   return table;
 }
 
+/** TOML arrays are conventionally spaced; JSON.stringify is not, which churned the twin. */
+function tomlArray(values) {
+  return `[${values.map((v) => JSON.stringify(String(v))).join(", ")}]`;
+}
+
 function serverToCodexSection(name, config) {
-  if (config.type !== "stdio" || !config.command) return null;
+  if (serverKind(config) !== "stdio" || !config.command) return null;
   const lines = [
     `[${codexServerTable(name)}]`,
     `command = ${JSON.stringify(config.command)}`,
   ];
-  if (config.args?.length) lines.push(`args = ${JSON.stringify(config.args)}`);
+  if (config.args?.length) lines.push(`args = ${tomlArray(config.args)}`);
   if (config.env && Object.keys(config.env).length) {
     lines.push("");
     lines.push(`[${codexServerTable(name, "env")}]`);
@@ -249,7 +404,7 @@ function codexBearerVar(config) {
  * injected into the preamble by emitCodexToml).
  */
 function serverToCodexHttpSection(name, config) {
-  if (config.type !== "http" || !config.url) return null;
+  if (serverKind(config) !== "http" || !config.url) return null;
   const lines = [
     `[${codexServerTable(name)}]`,
     `url = ${JSON.stringify(config.url)}`,
@@ -302,8 +457,9 @@ export function toVscodeServers(merged) {
   const out = {};
   for (const [name, config] of Object.entries(merged)) {
     let c = transformVscodeDeep(config);
-    const needsEnvFile = (c.type === "stdio" && isAlreadyWrapped(c))
-      || (c.type === "http" && needsSecrets(c));
+    const kind = serverKind(c);
+    const needsEnvFile = (kind === "stdio" && isAlreadyWrapped(c))
+      || (kind === "http" && needsSecrets(c));
     if (needsEnvFile) {
       c = { ...c, envFile: VSCODE_ENV_FILE };
     }
@@ -312,12 +468,33 @@ export function toVscodeServers(merged) {
   return out;
 }
 
-/** Emit Codex TOML as a projection of merged JSON (preamble preserved, MCP sections regenerated). */
-function emitCodexToml(merged, existingToml = "") {
-  const mcpMarker = existingToml.match(/^[\s\S]*?(?=^\[mcp_servers\.)/m);
-  let preamble = mcpMarker ? mcpMarker[0].trimEnd() : existingToml.trimEnd();
+/**
+ * Split TOML into the preamble plus top-level table blocks, dropping the MCP ones.
+ *
+ * Everything after the first `[mcp_servers.*]` table used to be discarded wholesale, so a
+ * team that appended `[profiles.fast]` or `[projects."/x"]` below the generated blocks lost
+ * it on the next sync. Only `mcp_servers` tables are ours to regenerate; keep the rest.
+ */
+export function stripCodexMcpTables(toml) {
+  const lines = toml.split("\n");
+  const kept = [];
+  let dropping = false;
+  for (const line of lines) {
+    const header = line.match(/^\s*\[\[?\s*([^\]\s]+)/);
+    if (header) {
+      const table = header[1].replace(/^"|"$/g, "");
+      dropping = table === "mcp_servers" || table.startsWith("mcp_servers.");
+    }
+    if (!dropping) kept.push(line);
+  }
+  return kept.join("\n").trimEnd();
+}
 
-  const hasHttp = Object.values(merged).some((c) => c?.type === "http" && c.url);
+/** Emit Codex TOML as a projection of merged JSON (user tables preserved, MCP sections regenerated). */
+function emitCodexToml(merged, existingToml = "") {
+  let preamble = stripCodexMcpTables(existingToml);
+
+  const hasHttp = Object.values(merged).some((c) => serverKind(c) === "http" && c.url);
   if (hasHttp) preamble = ensureCodexRmcpFlag(preamble);
 
   const blocks = [];
@@ -325,7 +502,7 @@ function emitCodexToml(merged, existingToml = "") {
   for (const [name, config] of Object.entries(merged)) {
     const block = serverToCodexSection(name, config) ?? serverToCodexHttpSection(name, config);
     if (block) blocks.push(block);
-    if (config?.type === "http" && config.url && !codexBearerVar(config)) {
+    if (serverKind(config) === "http" && config.url && !codexBearerVar(config)) {
       oauthLogin.push(name);
     }
   }
@@ -378,19 +555,25 @@ export function upgradeMcp({ templateRoot, repoDir = REPO_DIR }) {
   const vscodeMcp = join(rootConfig, ".vscode", "mcp.json");
 
   const templateServers = templateLoad.servers;
+  const disabled = readDisabledServers(rootConfig);
   const userServers = collectUserServers(workspace, rootConfig);
-  const merged = applySecretTransforms(mergeServers(templateServers, userServers), { repoDir });
+  const merged = applySecretTransforms(
+    mergeServers(templateServers, userServers, disabled),
+    { repoDir },
+  );
   const changedPaths = [];
   const rel = (p) => relative(repoDir, p).replaceAll("\\", "/");
 
   console.log("\n🔌 Upgrading MCP configs...\n");
 
-  const added = Object.keys(templateServers).filter((k) => !(k in userServers));
-  const refreshed = Object.keys(templateServers).filter((k) => k in userServers);
-  const kept = Object.keys(userServers).filter((k) => !(k in templateServers));
+  const off = new Set(disabled);
+  const added = Object.keys(templateServers).filter((k) => !(k in userServers) && !off.has(k));
+  const refreshed = Object.keys(templateServers).filter((k) => k in userServers && !off.has(k));
+  const kept = Object.keys(userServers).filter((k) => !(k in templateServers) && !off.has(k));
   for (const name of added) console.log(`  + ${name} (from template)`);
   for (const name of refreshed) console.log(`  ↻ refreshed ${name} (bundled)`);
   for (const name of kept) console.log(`  ✓ kept ${name} (user)`);
+  for (const name of off) console.log(`  ⊘ ${name} (disabled via .agents/mcp-disabled.json)`);
 
   ensureDir(join(rootConfig, ".agents"));
   const canonicalBefore = existsSync(canonical) ? readFileSync(canonical, "utf8") : null;

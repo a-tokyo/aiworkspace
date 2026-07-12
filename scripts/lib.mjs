@@ -461,6 +461,21 @@ export const MCP_TEMPLATE_REL_PATHS = [
 
 // ── MCP placeholder / secret helpers ────────────────────────────────────
 
+/**
+ * Transport of an MCP server, inferred when `type` is absent.
+ *
+ * Claude Code and Cursor both accept a bare `{ command, args }` (no `type`), so
+ * keying behaviour off `config.type` alone silently skips those servers — they
+ * escape secret-wrapping and drop out of the Codex twin. Infer from shape.
+ */
+export function serverKind(config) {
+  if (!config || typeof config !== "object" || Array.isArray(config)) return null;
+  if (typeof config.type === "string" && config.type) return config.type;
+  if (config.command) return "stdio";
+  if (config.url) return "http";
+  return null;
+}
+
 export const MCP_PLACEHOLDER_RE = /\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
 export function hasMcpPlaceholder(value) {
@@ -503,7 +518,7 @@ export function mcpLoadEnvRel(repoDir = REPO_DIR) {
 }
 
 export function isMcpLoadEnvWrapped(config) {
-  if (!config || config.type !== "stdio") return false;
+  if (serverKind(config) !== "stdio") return false;
   const args = config.args ?? [];
   return config.command === "node"
     && args.some((a) => typeof a === "string" && a.includes("mcp-load-env.mjs"));
@@ -539,7 +554,7 @@ export function secretVarsForMcpServer(_name, config) {
  */
 export function httpBearerVarsForMcpServer(config) {
   const vars = new Set();
-  if (!config || config.type !== "http") return vars;
+  if (serverKind(config) !== "http") return vars;
   const auth = config.headers?.Authorization;
   if (typeof auth !== "string" || !/^Bearer\s/i.test(auth)) return vars;
   for (const m of auth.matchAll(/\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}/g)) vars.add(m[1]);
