@@ -236,6 +236,10 @@ describe("upgradeMcp", () => {
         mcpServers: {
           arg_token: { type: "stdio", command: "npx", args: ["-y", "srv", "--api-key", "sk-live-abcdefghijklmnop"] },
           url_token: { type: "http", url: "https://mcp.example.com/sse?token=ghp_abcdefghijklmnopqrst" },
+          // A ${VAR} elsewhere in the url must not let a literal token skip the scan.
+          url_mixed: { type: "http", url: "https://${HOST}/sse?token=ghp_abcdefghijklmnopqrst" },
+          // A placeholder query value is the correct, allowed shape.
+          url_placeholder: { type: "http", url: "https://mcp.example.com/sse?token=${MY_TOKEN}" },
           clean: { type: "http", url: "https://mcp.example.com/sse" },
         },
       }, null, 2) + "\n",
@@ -246,6 +250,8 @@ describe("upgradeMcp", () => {
     const merged = JSON.parse(readFileSync(canonical, "utf8"));
     assert.equal(merged.mcpServers.arg_token, undefined, "token in args must not be imported");
     assert.equal(merged.mcpServers.url_token, undefined, "token in url must not be imported");
+    assert.equal(merged.mcpServers.url_mixed, undefined, "token in a url that also has a ${VAR} must not be imported");
+    assert.ok(merged.mcpServers.url_placeholder, "a ${VAR} query value is not a literal credential");
     assert.ok(merged.mcpServers.clean);
   });
 

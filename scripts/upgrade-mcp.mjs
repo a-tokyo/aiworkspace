@@ -230,13 +230,16 @@ function hasLiteralCredentials(serverConfig) {
     }
   }
 
-  if (isLiteral(serverConfig.url)) {
+  // Scan any string url — not just fully-literal ones. A url mixing a ${VAR} placeholder
+  // with a real token (`https://…/${HOST}?token=ghp_…`) must not skip the whole check;
+  // only the individual query value that is itself a placeholder is treated as non-literal.
+  if (typeof serverConfig.url === "string" && serverConfig.url) {
     if (SECRET_VALUE_PATTERN.test(serverConfig.url)) return true;
     const query = serverConfig.url.split("?")[1];
     if (query) {
       for (const pair of query.split("&")) {
         const [k, v = ""] = pair.split("=");
-        if (SECRET_KEY_PATTERN.test(k) && v && !isBenignValue(v)) return true;
+        if (SECRET_KEY_PATTERN.test(k) && v && !v.includes("${") && !isBenignValue(v)) return true;
       }
     }
   }
