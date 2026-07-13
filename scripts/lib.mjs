@@ -238,6 +238,21 @@ export function resolveSkillsBin() {
 }
 
 /**
+ * Env overrides that make git/ssh/credential-manager fail fast instead of
+ * prompting on /dev/tty. Interactive prompts read the controlling terminal
+ * directly, which `stdio: "ignore"` does NOT redirect — so without these a
+ * clone can block a `npm install` indefinitely waiting for input.
+ */
+export function nonInteractiveGitEnv(base = process.env) {
+  return {
+    ...base,
+    GIT_TERMINAL_PROMPT: "0",
+    GIT_SSH_COMMAND: base.GIT_SSH_COMMAND || "ssh -oBatchMode=yes",
+    GCM_INTERACTIVE: "never",
+  };
+}
+
+/**
  * Remove symlinks the skills CLI creates inside a directory for each tool
  * (.cursor/skills/, .claude/skills/, and bare skills/ for OpenClaw).
  * We manage these ourselves via setup-skills.
