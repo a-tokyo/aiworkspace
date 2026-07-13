@@ -14,12 +14,16 @@ set -a
 . "$_ENV_FILE"
 set +a
 
-# shellcheck source=/dev/null
-. "$_PATHS_FILE"
+_line=$(grep -E '^AIWORKSPACE_NODE=' "$_PATHS_FILE" 2>/dev/null | head -n 1) || _line=
+[ -n "$_line" ] || return 0 2>/dev/null || exit 0
+_AIWORKSPACE_NODE=${_line#AIWORKSPACE_NODE=}
+case $_AIWORKSPACE_NODE in
+  \"*) _AIWORKSPACE_NODE=${_AIWORKSPACE_NODE#\"}; _AIWORKSPACE_NODE=${_AIWORKSPACE_NODE%\"} ;;
+esac
 
-[ -n "$AIWORKSPACE_NODE" ] && [ -x "$AIWORKSPACE_NODE" ] || return 0 2>/dev/null || exit 0
+[ -n "$_AIWORKSPACE_NODE" ] && [ -x "$_AIWORKSPACE_NODE" ] || return 0 2>/dev/null || exit 0
 
-_keys=$("$AIWORKSPACE_NODE" "$_SCRIPT_DIR/mcp-bearer-env-keys.mjs") || return 0 2>/dev/null || exit 0
+_keys=$("$_AIWORKSPACE_NODE" "$_SCRIPT_DIR/mcp-bearer-env-keys.mjs") || return 0 2>/dev/null || exit 0
 [ -n "$_keys" ] || return 0 2>/dev/null || exit 0
 
 case $(uname -s) in
@@ -36,4 +40,4 @@ printf '%s\n' "$_keys" | while IFS= read -r _key; do
   launchctl setenv "$_key" "$_val" 2>/dev/null || true
 done
 
-unset _SCRIPT_DIR _ENV_FILE _PATHS_FILE _keys _key _val
+unset _SCRIPT_DIR _ENV_FILE _PATHS_FILE _line _AIWORKSPACE_NODE _keys _key _val

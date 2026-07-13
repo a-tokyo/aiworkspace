@@ -48,8 +48,11 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-  console.log(`Usage: npm run mcp:install-shell [-- --yes] [--shell zsh|bash|pwsh|all]
-       npm run mcp:uninstall-shell [-- --yes] [--shell zsh|bash|pwsh|all]
+  console.log(`Usage: npm run mcp:install-shell -- [--yes] [--shell zsh|bash|pwsh|all] [--persist]
+       npm run mcp:uninstall-shell -- [--yes] [--shell zsh|bash|pwsh|all]
+
+Pass flags after -- when using npm run.
+Or: node scripts/install-shell-profile.mjs [--yes] [--shell ...] [--persist] [--uninstall]
 
 Options:
   --yes        Apply without confirmation (required when stdin is not a TTY)

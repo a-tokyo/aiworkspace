@@ -34,7 +34,7 @@ function warnCursorBearerEnvLoading() {
   console.warn("Prefer OAuth HTTP servers when available.");
   if (platform() === "win32") {
     console.warn(
-      "On Windows: run `npm run mcp:install-shell` (optionally with --persist for GUI apps),",
+      "On Windows: run `npm run mcp:install-shell -- --persist` for GUI apps,",
     );
     console.warn(
       "  or set User environment variables from .env.local — see PowerShell example in",
