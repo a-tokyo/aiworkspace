@@ -6,13 +6,18 @@ $EnvFile = Join-Path (Split-Path -Parent (Split-Path -Parent $ScriptDir)) ".env.
 $PathsFile = Join-Path $ScriptDir ".mcp-env.paths"
 
 if (-not (Test-Path -LiteralPath $EnvFile)) { return }
-if (-not (Test-Path -LiteralPath $PathsFile)) { return }
 
 $node = $null
-Get-Content -LiteralPath $PathsFile | ForEach-Object {
-  if ($_ -match '^AIWORKSPACE_NODE=(.+)$') {
-    $node = $matches[1].Trim().Trim('"')
+if (Test-Path -LiteralPath $PathsFile) {
+  Get-Content -LiteralPath $PathsFile | ForEach-Object {
+    if ($_ -match '^AIWORKSPACE_NODE=(.+)$') {
+      $node = $matches[1].Trim().Trim('"')
+    }
   }
+}
+if (-not $node -or -not (Test-Path -LiteralPath $node)) {
+  $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+  if ($nodeCmd) { $node = $nodeCmd.Source }
 }
 if (-not $node -or -not (Test-Path -LiteralPath $node)) { return }
 

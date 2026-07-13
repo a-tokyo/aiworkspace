@@ -98,4 +98,58 @@ describe("install-shell-profile", () => {
     assert.equal(r.status, 0);
     assert.match(r.stdout, /nothing to install/i);
   });
+
+  it("uninstall works when mcp.json has no Bearer servers", () => {
+    tmp = makeTmpDir();
+    const home = join(tmp.dir, "home");
+    const ws = join(tmp.dir, "parent", "ws");
+    mkdirSync(home, { recursive: true });
+    seedWorkspace(ws, join(tmp.dir, "parent"));
+    const zshrc = join(home, ".zshrc");
+
+    spawnSync(
+      process.execPath,
+      [join(ws, "scripts", "install-shell-profile.mjs"), "--yes", "--shell", "zsh"],
+      { cwd: ws, env: { ...process.env, HOME: home } },
+    );
+
+    writeFileSync(
+      join(ws, "root-config", ".agents", "mcp.json"),
+      JSON.stringify({ mcpServers: { figma: { type: "http", url: "https://mcp.figma.com/mcp" } } }, null, 2) + "\n",
+    );
+
+    const r = spawnSync(
+      process.execPath,
+      [join(ws, "scripts", "install-shell-profile.mjs"), "--uninstall", "--yes", "--shell", "zsh"],
+      { cwd: ws, encoding: "utf8", env: { ...process.env, HOME: home } },
+    );
+    assert.equal(r.status, 0, r.stderr);
+    assert.doesNotMatch(readFileSync(zshrc, "utf8"), /aiworkspace-mcp-env/);
+  });
+
+  it("refreshes .mcp-env.paths when profiles are already up to date", () => {
+    tmp = makeTmpDir();
+    const home = join(tmp.dir, "home");
+    const ws = join(tmp.dir, "parent", "ws");
+    mkdirSync(home, { recursive: true });
+    seedWorkspace(ws, join(tmp.dir, "parent"));
+    const pathsFile = join(ws, "scripts", ".mcp-env.paths");
+
+    spawnSync(
+      process.execPath,
+      [join(ws, "scripts", "install-shell-profile.mjs"), "--yes", "--shell", "zsh"],
+      { cwd: ws, env: { ...process.env, HOME: home } },
+    );
+    writeFileSync(pathsFile, 'AIWORKSPACE_NODE="/stale/node"\n');
+
+    const r = spawnSync(
+      process.execPath,
+      [join(ws, "scripts", "install-shell-profile.mjs"), "--yes", "--shell", "zsh"],
+      { cwd: ws, encoding: "utf8", env: { ...process.env, HOME: home } },
+    );
+    assert.equal(r.status, 0, r.stderr);
+    const paths = readFileSync(pathsFile, "utf8");
+    assert.doesNotMatch(paths, /\/stale\/node/);
+    assert.match(paths, new RegExp(JSON.stringify(process.execPath).slice(1, -1)));
+  });
 });

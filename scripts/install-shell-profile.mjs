@@ -196,7 +196,7 @@ async function main() {
   }
 
   const keys = bearerKeysFromMcp();
-  if (keys.length === 0) {
+  if (keys.length === 0 && !opts.uninstall) {
     console.log("No HTTP Bearer MCP servers in mcp.json — nothing to install.");
     return;
   }
@@ -222,6 +222,11 @@ async function main() {
   }
 
   if (changes.length === 0) {
+    if (!opts.uninstall && nodeBin) {
+      writePathsFile(nodeBin);
+      console.log("Profiles already up to date. Refreshed scripts/.mcp-env.paths.");
+      return;
+    }
     console.log(opts.uninstall ? "Marked block not found in selected profiles." : "Profiles already up to date.");
     return;
   }
