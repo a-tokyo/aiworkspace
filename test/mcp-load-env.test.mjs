@@ -75,6 +75,16 @@ BAZ="quoted"
     assert.deepEqual(JSON.parse(r.stdout), { FOO: "bar" });
   });
 
+  it("--export-sh prints POSIX export lines", () => {
+    tmp = makeTmpDir();
+    const envPath = join(tmp.dir, ".env.local");
+    writeFileSync(envPath, "FOO=bar\nQUOTED=it's fine\n");
+    const r = spawnSync(process.execPath, [SCRIPT, "--export-sh", envPath], { encoding: "utf8" });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /export FOO='bar'/);
+    assert.match(r.stdout, /export QUOTED='it'\\''s fine'/);
+  });
+
   it("--headers prints JSON authorization header", () => {
     tmp = makeTmpDir();
     const ws = join(tmp.dir, "workspace");

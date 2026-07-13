@@ -86,6 +86,17 @@ export function loadEnvLocal(path = ENV_LOCAL) {
   return parseDotenv(readFileSync(path, "utf8"));
 }
 
+/** POSIX sh single-quoted export value (safe for eval). */
+export function shellSingleQuote(val) {
+  return `'${String(val).replace(/'/g, `'\\''`)}'`;
+}
+
+export function formatExportSh(env) {
+  return Object.entries(env)
+    .map(([k, v]) => `export ${k}=${shellSingleQuote(v)}`)
+    .join("\n");
+}
+
 function resolveEnvVar(varName, fileEnv, shellEnv = process.env) {
   if (fileEnv[varName]) return fileEnv[varName];
   if (shellEnv[varName]) return shellEnv[varName];
@@ -123,6 +134,13 @@ function parseArgs(argv) {
     const next = argv[dumpIdx + 1];
     const path = next && !next.startsWith("--") ? next : ENV_LOCAL;
     return { mode: "dump-env", path };
+  }
+
+  const exportShIdx = argv.indexOf("--export-sh");
+  if (exportShIdx !== -1) {
+    const next = argv[exportShIdx + 1];
+    const path = next && !next.startsWith("--") ? next : ENV_LOCAL;
+    return { mode: "export-sh", path };
   }
 
   const execIdx = argv.indexOf("--exec");
@@ -164,6 +182,13 @@ function main() {
 
   if (opts.mode === "dump-env") {
     process.stdout.write(JSON.stringify(loadEnvLocal(opts.path)));
+    return;
+  }
+
+  if (opts.mode === "export-sh") {
+    const env = loadEnvLocal(opts.path);
+    const body = formatExportSh(env);
+    process.stdout.write(body ? `${body}\n` : "");
     return;
   }
 
@@ -210,6 +235,11 @@ function main() {
 }
 
 const cliArgv = process.argv.slice(2);
-if (cliArgv.includes("--exec") || cliArgv.includes("--headers") || cliArgv.includes("--dump-env")) {
+if (
+  cliArgv.includes("--exec")
+  || cliArgv.includes("--headers")
+  || cliArgv.includes("--dump-env")
+  || cliArgv.includes("--export-sh")
+) {
   main();
 }

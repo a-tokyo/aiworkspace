@@ -49,9 +49,18 @@ describe("mcp env marker blocks", () => {
     envScriptPath: "/tmp/ws/scripts/workspace-env.sh",
   });
 
-  it("builds posix marker block", () => {
+  it("builds posix marker block with baked scripts dir", () => {
     assert.match(block, new RegExp(MCP_ENV_MARKER_START.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-    assert.match(block, /workspace-env\.sh/);
+    assert.match(block, /workspace-env\.sh.*\/tmp\/ws\/scripts/);
+  });
+
+  it("builds pwsh marker block with single-quoted paths", () => {
+    const pwshBlock = buildMcpEnvMarkerBlock({
+      shell: "pwsh",
+      envScriptPath: "C:\\ws\\scripts\\workspace-env.ps1",
+    });
+    assert.match(pwshBlock, /'C:\\ws\\scripts\\workspace-env\.ps1'/);
+    assert.doesNotMatch(pwshBlock, /\\\\/);
   });
 
   it("appends then replaces marker region", () => {
@@ -79,6 +88,12 @@ describe("mcp env marker blocks", () => {
     assert.match(extracted, /aiworkspace-mcp-env/);
     assert.doesNotMatch(extracted, /SECRET=do-not-leak/);
     assert.equal(extractMcpEnvMarkerBlock("no block here"), "(no managed block)");
+  });
+
+  it("preserves blank lines outside the managed block", () => {
+    const content = "line1\n\n\n\nline2\n";
+    const inserted = upsertMcpEnvMarkerBlock(content, block);
+    assert.match(inserted, /\n\n\n\nline2/);
   });
 
   it("ignores an end marker that appears before the start marker", () => {

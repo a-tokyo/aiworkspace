@@ -15,21 +15,22 @@ import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import {
   REPO_DIR,
-  ROOT_CONFIG,
-  readMcpJson,
-  collectHttpBearerVars,
+  WORKSPACE,
   buildMcpEnvMarkerBlock,
   upsertMcpEnvMarkerBlock,
   removeMcpEnvMarkerBlock,
   extractMcpEnvMarkerBlock,
   isCliAvailable,
+  readBearerKeysFromMcp,
+  readBearerKeysFromPathsFile,
   MCP_ENV_MARKER_START,
 } from "./lib.mjs";
-import { loadEnvLocal } from "./mcp-load-env.mjs";
 
 const PATHS_FILE = join(REPO_DIR, "scripts", ".mcp-env.paths");
 const ENV_SH = join(REPO_DIR, "scripts", "workspace-env.sh");
 const ENV_PS1 = join(REPO_DIR, "scripts", "workspace-env.ps1");
+const PERSIST_PS1 = join(REPO_DIR, "scripts", "persist-user-env.ps1");
+const SHELL_VALUES = new Set(["all", "zsh", "bash", "pwsh"]);
 
 function parseArgs(argv) {
   const opts = { uninstall: false, yes: false, persist: false, shell: "all" };
@@ -39,7 +40,11 @@ function parseArgs(argv) {
     else if (a === "--yes" || a === "-y") opts.yes = true;
     else if (a === "--persist") opts.persist = true;
     else if (a === "--shell") {
-      opts.shell = argv[++i] ?? "all";
+      const next = argv[++i];
+      if (!next || next.startsWith("--") || !SHELL_VALUES.has(next)) {
+        throw new Error(`--shell requires one of: ${[...SHELL_VALUES].join(", ")}`);
+      }
+      opts.shell = next;
     } else if (a === "--help" || a === "-h") {
       opts.help = true;
     }
@@ -62,12 +67,10 @@ Options:
 `);
 }
 
-function bearerKeysFromMcp() {
-  const path = join(ROOT_CONFIG, ".agents", "mcp.json");
-  if (!existsSync(path)) return [];
-  const parsed = readMcpJson(path);
-  if (!parsed) return [];
-  return collectHttpBearerVars(parsed.mcpServers);
+function bearerKeysForCleanup() {
+  const fromMcp = readBearerKeysFromMcp();
+  if (fromMcp.length) return fromMcp;
+  return readBearerKeysFromPathsFile(PATHS_FILE);
 }
 
 function resolveNodeBin() {
@@ -78,10 +81,11 @@ function resolveNodeBin() {
   return resolve(node);
 }
 
-function writePathsFile(nodeBin) {
-  const content = `AIWORKSPACE_NODE=${JSON.stringify(nodeBin)}\n`;
+function writePathsFile(nodeBin, bearerKeys) {
+  const lines = [`AIWORKSPACE_NODE=${JSON.stringify(nodeBin)}`];
+  if (bearerKeys?.length) lines.push(`BEARER_KEYS=${bearerKeys.join(",")}`);
   mkdirSync(join(REPO_DIR, "scripts"), { recursive: true });
-  writeFileSync(PATHS_FILE, content);
+  writeFileSync(PATHS_FILE, `${lines.join("\n")}\n`);
 }
 
 function defaultPwshProfile(home) {
@@ -160,31 +164,46 @@ async function confirmApply(changes) {
 
 function persistWindowsUserEnv(keys) {
   if (platform() !== "win32" || keys.length === 0) return;
-  const envFile = join(resolve(REPO_DIR, ".."), ".env.local");
+  const envFile = join(WORKSPACE, ".env.local");
   if (!existsSync(envFile)) {
     console.warn("  ⚠ --persist: .env.local missing at parent workspace root — skipped User env write");
     return;
   }
-  const fileEnv = loadEnvLocal(envFile);
+  const r = spawnSync(
+    "powershell",
+    ["-NoProfile", "-File", PERSIST_PS1, "-EnvFile", envFile, "-KeysCsv", keys.join(",")],
+    { stdio: "inherit" },
+  );
+  if (r.error) {
+    console.warn(`  ⚠ Could not persist User env: ${r.error.message}`);
+  } else if (r.status !== 0) {
+    console.warn(`  ⚠ Could not persist User env: powershell exited ${r.status}`);
+  } else {
+    for (const key of keys) console.log(`  ✓ User env: ${key}`);
+  }
+}
+
+function clearMacLaunchctlEnv(keys) {
+  if (platform() !== "darwin" || keys.length === 0) return;
   for (const key of keys) {
-    const value = fileEnv[key];
-    if (typeof value !== "string" || value === "") continue;
-    const r = spawnSync(
-      "powershell",
-      [
-        "-NoProfile",
-        "-Command",
-        `[Environment]::SetEnvironmentVariable('${key.replace(/'/g, "''")}', '${value.replace(/'/g, "''")}', 'User')`,
-      ],
-      { stdio: "ignore" },
-    );
-    if (r.error) {
-      console.warn(`  ⚠ Could not set User env ${key}: ${r.error.message}`);
-    } else if (r.status !== 0) {
-      console.warn(`  ⚠ Could not set User env ${key}: powershell exited ${r.status}`);
-    } else {
-      console.log(`  ✓ User env: ${key}`);
-    }
+    const r = spawnSync("launchctl", ["unsetenv", key], { stdio: "ignore" });
+    if (r.status === 0) console.log(`  ✓ launchctl unsetenv ${key}`);
+  }
+}
+
+function clearWindowsUserEnv(keys) {
+  if (platform() !== "win32" || keys.length === 0) return;
+  const r = spawnSync(
+    "powershell",
+    ["-NoProfile", "-File", PERSIST_PS1, "-KeysCsv", keys.join(","), "-Clear"],
+    { stdio: "inherit" },
+  );
+  if (r.error) {
+    console.warn(`  ⚠ Could not clear User env: ${r.error.message}`);
+  } else if (r.status !== 0) {
+    console.warn(`  ⚠ Could not clear User env: powershell exited ${r.status}`);
+  } else {
+    for (const key of keys) console.log(`  ✓ User env cleared: ${key}`);
   }
 }
 
@@ -195,12 +214,13 @@ async function main() {
     return;
   }
 
-  const keys = bearerKeysFromMcp();
+  const keys = readBearerKeysFromMcp();
   if (keys.length === 0 && !opts.uninstall) {
     console.log("No HTTP Bearer MCP servers in mcp.json — nothing to install.");
     return;
   }
 
+  const cleanupKeys = opts.uninstall ? bearerKeysForCleanup() : keys;
   const nodeBin = opts.uninstall ? null : resolveNodeBin();
 
   const targets = profileTargets(opts.shell);
@@ -223,7 +243,7 @@ async function main() {
 
   if (changes.length === 0) {
     if (!opts.uninstall && nodeBin) {
-      writePathsFile(nodeBin);
+      writePathsFile(nodeBin, keys);
       console.log("Profiles already up to date. Refreshed scripts/.mcp-env.paths.");
       return;
     }
@@ -237,14 +257,17 @@ async function main() {
     process.exit(1);
   }
 
-  if (nodeBin) writePathsFile(nodeBin);
+  if (nodeBin) writePathsFile(nodeBin, keys);
 
   for (const { profilePath, after } of changes) {
     writeProfile(profilePath, after);
     console.log(`  ✓ ${profilePath}`);
   }
 
-  if (!opts.uninstall && opts.persist) {
+  if (opts.uninstall) {
+    clearMacLaunchctlEnv(cleanupKeys);
+    clearWindowsUserEnv(cleanupKeys);
+  } else if (opts.persist) {
     persistWindowsUserEnv(keys);
   }
 

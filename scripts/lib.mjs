@@ -586,23 +586,48 @@ export function collectHttpBearerVars(mcpServers) {
   return [...vars].sort();
 }
 
+/** Bearer keys from canonical mcp.json (empty when missing or invalid). */
+export function readBearerKeysFromMcp() {
+  const path = join(ROOT_CONFIG, ".agents", "mcp.json");
+  if (!existsSync(path)) return [];
+  const parsed = readMcpJson(path);
+  if (!parsed) return [];
+  return collectHttpBearerVars(parsed.mcpServers);
+}
+
+/** Bearer keys cached in scripts/.mcp-env.paths at install time. */
+export function readBearerKeysFromPathsFile(pathsFile) {
+  if (!existsSync(pathsFile)) return [];
+  const content = readFileSync(pathsFile, "utf8");
+  const match = content.match(/^BEARER_KEYS=(.+)$/m);
+  if (!match) return [];
+  return match[1].split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+function pwshQuotedPath(filePath) {
+  return `'${filePath.replace(/'/g, "''")}'`;
+}
+
 export const MCP_ENV_MARKER_START = "# >>> aiworkspace-mcp-env >>>";
 export const MCP_ENV_MARKER_END = "# <<< aiworkspace-mcp-env <<<";
 
 export function buildMcpEnvMarkerBlock({ shell, envScriptPath }) {
-  const q = JSON.stringify(envScriptPath);
+  const scriptsDir = dirname(envScriptPath);
   if (shell === "pwsh") {
+    const scriptQ = pwshQuotedPath(envScriptPath);
     return [
       MCP_ENV_MARKER_START,
       "# MCP Bearer tokens for Cursor. Managed by: npm run mcp:install-shell",
-      `if (Test-Path -LiteralPath ${q}) { . ${q} }`,
+      `if (Test-Path -LiteralPath ${scriptQ}) { . ${scriptQ} }`,
       MCP_ENV_MARKER_END,
     ].join("\n");
   }
+  const scriptQ = JSON.stringify(envScriptPath);
+  const dirQ = JSON.stringify(scriptsDir);
   return [
     MCP_ENV_MARKER_START,
     "# MCP Bearer tokens for Cursor. Managed by: npm run mcp:install-shell",
-    `[ -f ${q} ] && . ${q}`,
+    `[ -f ${scriptQ} ] && . ${scriptQ} ${dirQ}`,
     MCP_ENV_MARKER_END,
   ].join("\n");
 }
@@ -637,7 +662,7 @@ export function upsertMcpEnvMarkerBlock(content, block) {
     const { start, end } = span;
     const before = normalized.slice(0, start).replace(/\n?$/, "\n");
     const after = normalized.slice(end + MCP_ENV_MARKER_END.length).replace(/^\n?/, "\n");
-    result = `${before}${normalizedBlock}\n${after}`.replace(/\n{3,}/g, "\n\n").replace(/\n$/, "") + "\n";
+    result = `${before}${normalizedBlock}\n${after}`.replace(/\n$/, "") + "\n";
   } else {
     const trimmed = normalized.replace(/\n?$/, "");
     result = (trimmed ? `${trimmed}\n\n` : "") + `${normalizedBlock}\n`;

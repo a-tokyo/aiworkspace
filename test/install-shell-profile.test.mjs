@@ -51,9 +51,11 @@ describe("install-shell-profile", () => {
     assert.match(content, /aiworkspace-mcp-env/);
     assert.match(content, /workspace-env\.sh/);
     assert.match(content, /# existing/);
+    assert.match(content, /workspace-env\.sh.*scripts/);
     assert.ok(existsSync(join(ws, "scripts", ".mcp-env.paths")));
     const paths = readFileSync(join(ws, "scripts", ".mcp-env.paths"), "utf8");
     assert.match(paths, /AIWORKSPACE_NODE=/);
+    assert.match(paths, /BEARER_KEYS=GITHUB_PAT/);
   });
 
   it("uninstall removes marked block only", () => {
@@ -151,5 +153,32 @@ describe("install-shell-profile", () => {
     const paths = readFileSync(pathsFile, "utf8");
     assert.doesNotMatch(paths, /\/stale\/node/);
     assert.match(paths, new RegExp(JSON.stringify(process.execPath).slice(1, -1)));
+  });
+
+  it("rejects --shell when the next token is another flag", () => {
+    tmp = makeTmpDir();
+    const ws = join(tmp.dir, "ws");
+    cpSync(join(TEST_DIR, "..", "scripts"), join(ws, "scripts"), { recursive: true });
+    mkdirSync(join(ws, "root-config", ".agents"), { recursive: true });
+    writeFileSync(
+      join(ws, "root-config", ".agents", "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          github: {
+            type: "http",
+            url: "https://example.com",
+            headers: { Authorization: "Bearer ${env:GITHUB_PAT}" },
+          },
+        },
+      }, null, 2) + "\n",
+    );
+
+    const r = spawnSync(
+      process.execPath,
+      [join(ws, "scripts", "install-shell-profile.mjs"), "--yes", "--shell", "--persist"],
+      { cwd: ws, encoding: "utf8" },
+    );
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /--shell requires/);
   });
 });
