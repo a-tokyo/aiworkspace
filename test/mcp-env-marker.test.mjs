@@ -89,4 +89,17 @@ describe("mcp env marker blocks", () => {
     assert.doesNotMatch(stripped, new RegExp(MCP_ENV_MARKER_START.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.match(stripped, /noise/);
   });
+
+  it("preserves CRLF line endings in profile content", () => {
+    const crlfBlock = buildMcpEnvMarkerBlock({
+      shell: "pwsh",
+      envScriptPath: "C:\\ws\\scripts\\workspace-env.ps1",
+    });
+    const inserted = upsertMcpEnvMarkerBlock("before\r\n", crlfBlock);
+    assert.match(inserted, /\r\n/);
+    assert.match(inserted, /aiworkspace-mcp-env/);
+    const stripped = removeMcpEnvMarkerBlock(inserted);
+    assert.doesNotMatch(stripped, /aiworkspace-mcp-env/);
+    assert.match(stripped, /^before\r\n/);
+  });
 });

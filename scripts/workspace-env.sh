@@ -2,8 +2,8 @@
 # Load parent-root .env.local; on macOS push Bearer MCP vars to launchctl for Dock-launched Cursor.
 # Sourced from shell profile via npm run mcp:install-shell.
 
-_SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-_ENV_FILE=$(CDPATH= cd -- "$_SCRIPT_DIR/../.." && pwd)/.env.local
+_SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
+_ENV_FILE=$(CDPATH= cd "$_SCRIPT_DIR/../.." && pwd)/.env.local
 _PATHS_FILE="$_SCRIPT_DIR/.mcp-env.paths"
 
 [ -f "$_ENV_FILE" ] || return 0 2>/dev/null || exit 0

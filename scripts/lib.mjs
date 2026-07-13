@@ -595,7 +595,7 @@ export function buildMcpEnvMarkerBlock({ shell, envScriptPath }) {
     return [
       MCP_ENV_MARKER_START,
       "# MCP Bearer tokens for Cursor. Managed by: npm run mcp:install-shell",
-      `if (Test-Path ${q}) { . ${q} }`,
+      `if (Test-Path -LiteralPath ${q}) { . ${q} }`,
       MCP_ENV_MARKER_END,
     ].join("\n");
   }
@@ -615,16 +615,34 @@ function findMcpEnvMarkerSpan(content) {
   return { start, end };
 }
 
+function profileEol(content) {
+  return content.includes("\r\n") ? "\r\n" : "\n";
+}
+
+function toLf(content) {
+  return content.replace(/\r\n/g, "\n");
+}
+
+function fromLf(content, eol) {
+  return eol === "\r\n" ? content.replace(/\n/g, "\r\n") : content;
+}
+
 export function upsertMcpEnvMarkerBlock(content, block) {
-  const span = findMcpEnvMarkerSpan(content);
+  const eol = profileEol(content);
+  const normalized = toLf(content);
+  const normalizedBlock = toLf(block);
+  const span = findMcpEnvMarkerSpan(normalized);
+  let result;
   if (span) {
     const { start, end } = span;
-    const before = content.slice(0, start).replace(/\n?$/, "\n");
-    const after = content.slice(end + MCP_ENV_MARKER_END.length).replace(/^\n?/, "\n");
-    return `${before}${block}\n${after}`.replace(/\n{3,}/g, "\n\n").replace(/\n$/, "") + "\n";
+    const before = normalized.slice(0, start).replace(/\n?$/, "\n");
+    const after = normalized.slice(end + MCP_ENV_MARKER_END.length).replace(/^\n?/, "\n");
+    result = `${before}${normalizedBlock}\n${after}`.replace(/\n{3,}/g, "\n\n").replace(/\n$/, "") + "\n";
+  } else {
+    const trimmed = normalized.replace(/\n?$/, "");
+    result = (trimmed ? `${trimmed}\n\n` : "") + `${normalizedBlock}\n`;
   }
-  const trimmed = content.replace(/\n?$/, "");
-  return (trimmed ? `${trimmed}\n\n` : "") + `${block}\n`;
+  return fromLf(result, eol);
 }
 
 /** True when `command` resolves on PATH (or `where` on Windows). */
@@ -642,15 +660,19 @@ export function extractMcpEnvMarkerBlock(content) {
 }
 
 export function removeMcpEnvMarkerBlock(content) {
-  const span = findMcpEnvMarkerSpan(content);
+  const eol = profileEol(content);
+  const normalized = toLf(content);
+  const span = findMcpEnvMarkerSpan(normalized);
   if (!span) return content;
   const { start, end } = span;
-  const before = content.slice(0, start).replace(/\n$/, "");
-  const after = content.slice(end + MCP_ENV_MARKER_END.length).replace(/^\n/, "");
-  if (before && after) return `${before}\n${after}\n`;
-  if (before) return `${before}\n`;
-  if (after) return `${after}\n`;
-  return "";
+  const before = normalized.slice(0, start).replace(/\n$/, "");
+  const after = normalized.slice(end + MCP_ENV_MARKER_END.length).replace(/^\n/, "");
+  let result;
+  if (before && after) result = `${before}\n${after}\n`;
+  else if (before) result = `${before}\n`;
+  else if (after) result = `${after}\n`;
+  else result = "";
+  return fromLf(result, eol);
 }
 
 // ── package.json script merge ────────────────────────────────────────────

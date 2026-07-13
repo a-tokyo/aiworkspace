@@ -5,11 +5,11 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $EnvFile = Join-Path (Split-Path -Parent (Split-Path -Parent $ScriptDir)) ".env.local"
 $PathsFile = Join-Path $ScriptDir ".mcp-env.paths"
 
-if (-not (Test-Path $EnvFile)) { return }
-if (-not (Test-Path $PathsFile)) { return }
+if (-not (Test-Path -LiteralPath $EnvFile)) { return }
+if (-not (Test-Path -LiteralPath $PathsFile)) { return }
 
 $node = $null
-Get-Content $PathsFile | ForEach-Object {
+Get-Content -LiteralPath $PathsFile | ForEach-Object {
   if ($_ -match '^AIWORKSPACE_NODE=(.+)$') {
     $node = $matches[1].Trim().Trim('"')
   }
