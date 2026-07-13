@@ -70,7 +70,6 @@ for (const [name, config] of Object.entries(parsed.mcpServers)) {
 }
 
 if (httpBearer.length > 0) {
-  const envLocalPath = join(WORKSPACE, ".env.local");
   console.warn("\n⚠ MCP HTTP servers using a Bearer token header:");
   for (const { name, vars } of httpBearer) {
     console.warn(`  - ${name} (Authorization: Bearer ${formatBearerPlaceholders(vars)})`);
