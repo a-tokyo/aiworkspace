@@ -6,6 +6,7 @@ import {
   upsertMcpEnvMarkerBlock,
   removeMcpEnvMarkerBlock,
   extractMcpEnvMarkerBlock,
+  isCliAvailable,
   MCP_ENV_MARKER_START,
 } from "../scripts/lib.mjs";
 
@@ -25,6 +26,19 @@ describe("collectHttpBearerVars", () => {
       oauth: { type: "http", url: "https://example.com/mcp" },
     });
     assert.deepEqual(keys, ["GITHUB_PAT", "SONAR_TOKEN"]);
+  });
+});
+
+describe("isCliAvailable", () => {
+  it("returns false when which/where fails", () => {
+    assert.equal(isCliAvailable("pwsh", () => ({ status: 1, stdout: "" })), false);
+  });
+
+  it("returns true when which/where succeeds", () => {
+    assert.equal(
+      isCliAvailable("pwsh", () => ({ status: 0, stdout: "/usr/bin/pwsh\n" })),
+      true,
+    );
   });
 });
 

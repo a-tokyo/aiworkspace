@@ -619,6 +619,14 @@ export function upsertMcpEnvMarkerBlock(content, block) {
   return (trimmed ? `${trimmed}\n\n` : "") + `${block}\n`;
 }
 
+/** True when `command` resolves on PATH (or `where` on Windows). */
+export function isCliAvailable(command, spawnFn = spawnSync) {
+  const probe = platform() === "win32"
+    ? spawnFn("where", [command], { encoding: "utf8" })
+    : spawnFn("which", [command], { encoding: "utf8" });
+  return probe.status === 0 && Boolean(probe.stdout?.trim());
+}
+
 export function extractMcpEnvMarkerBlock(content) {
   const start = content.indexOf(MCP_ENV_MARKER_START);
   const end = content.indexOf(MCP_ENV_MARKER_END);

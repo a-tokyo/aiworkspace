@@ -22,6 +22,7 @@ import {
   upsertMcpEnvMarkerBlock,
   removeMcpEnvMarkerBlock,
   extractMcpEnvMarkerBlock,
+  isCliAvailable,
   MCP_ENV_MARKER_START,
 } from "./lib.mjs";
 import { loadEnvLocal } from "./mcp-load-env.mjs";
@@ -90,10 +91,7 @@ function defaultPwshProfile(home) {
 
 function pwshAvailable(pwshProfile) {
   if (existsSync(pwshProfile)) return true;
-  const which = platform() === "win32"
-    ? spawnSync("where", ["pwsh"], { encoding: "utf8" })
-    : spawnSync("which", ["pwsh"], { encoding: "utf8" });
-  return which.status === 0 && Boolean(which.stdout.trim());
+  return isCliAvailable("pwsh");
 }
 
 function profileTargets(shell, home = homedir()) {
