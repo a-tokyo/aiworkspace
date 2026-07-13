@@ -8,6 +8,7 @@ import {
   extractMcpEnvMarkerBlock,
   isCliAvailable,
   MCP_ENV_MARKER_START,
+  MCP_ENV_MARKER_END,
 } from "../scripts/lib.mjs";
 
 describe("collectHttpBearerVars", () => {
@@ -78,5 +79,14 @@ describe("mcp env marker blocks", () => {
     assert.match(extracted, /aiworkspace-mcp-env/);
     assert.doesNotMatch(extracted, /SECRET=do-not-leak/);
     assert.equal(extractMcpEnvMarkerBlock("no block here"), "(no managed block)");
+  });
+
+  it("ignores an end marker that appears before the start marker", () => {
+    const strayEnd = `${MCP_ENV_MARKER_END}\nnoise\n`;
+    const content = upsertMcpEnvMarkerBlock(strayEnd, block);
+    assert.equal(content.match(new RegExp(MCP_ENV_MARKER_START.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"))?.length, 1);
+    const stripped = removeMcpEnvMarkerBlock(content);
+    assert.doesNotMatch(stripped, new RegExp(MCP_ENV_MARKER_START.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(stripped, /noise/);
   });
 });

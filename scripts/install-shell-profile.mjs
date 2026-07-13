@@ -98,7 +98,7 @@ function pwshAvailable(pwshProfile) {
 }
 
 function profileTargets(shell, home = homedir()) {
-  const all = {
+  const profiles = {
     zsh: join(home, ".zshrc"),
     bash: join(home, ".bashrc"),
     pwsh: process.env.AIWORKSPACE_PWSH_PROFILE ?? defaultPwshProfile(home),
@@ -106,15 +106,15 @@ function profileTargets(shell, home = homedir()) {
   if (shell === "all") {
     const targets = [];
     if (platform() !== "win32") {
-      targets.push(["zsh", all.zsh], ["bash", all.bash]);
-      if (pwshAvailable(all.pwsh)) targets.push(["pwsh", all.pwsh]);
+      targets.push(["zsh", profiles.zsh], ["bash", profiles.bash]);
+      if (pwshAvailable(profiles.pwsh)) targets.push(["pwsh", profiles.pwsh]);
       return targets;
     }
-    targets.push(["pwsh", all.pwsh]);
+    targets.push(["pwsh", profiles.pwsh]);
     return targets;
   }
-  if (!(shell in all)) throw new Error(`Unknown --shell ${shell}`);
-  return [[shell, all[shell]]];
+  if (!Object.hasOwn(profiles, shell)) throw new Error(`Unknown --shell ${shell}`);
+  return [[shell, profiles[shell]]];
 }
 
 function readProfile(path) {
@@ -201,8 +201,7 @@ async function main() {
     return;
   }
 
-  const nodeBin = resolveNodeBin();
-  if (!opts.uninstall) writePathsFile(nodeBin);
+  const nodeBin = opts.uninstall ? null : resolveNodeBin();
 
   const targets = profileTargets(opts.shell);
   const changes = [];
@@ -232,6 +231,8 @@ async function main() {
     console.log("Cancelled.");
     process.exit(1);
   }
+
+  if (nodeBin) writePathsFile(nodeBin);
 
   for (const { profilePath, after } of changes) {
     writeProfile(profilePath, after);

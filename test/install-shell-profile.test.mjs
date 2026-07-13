@@ -1,15 +1,18 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { makeTmpDir } from "./helpers.mjs";
+
+const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 
 let tmp;
 afterEach(() => tmp?.cleanup());
 
 function seedWorkspace(ws, parent) {
-  cpSync(join(import.meta.dirname, "..", "scripts"), join(ws, "scripts"), { recursive: true });
+  cpSync(join(TEST_DIR, "..", "scripts"), join(ws, "scripts"), { recursive: true });
   mkdirSync(join(ws, "root-config", ".agents"), { recursive: true });
   writeFileSync(
     join(ws, "root-config", ".agents", "mcp.json"),
@@ -80,7 +83,7 @@ describe("install-shell-profile", () => {
   it("exits cleanly when no Bearer servers configured", () => {
     tmp = makeTmpDir();
     const ws = join(tmp.dir, "ws");
-    cpSync(join(import.meta.dirname, "..", "scripts"), join(ws, "scripts"), { recursive: true });
+    cpSync(join(TEST_DIR, "..", "scripts"), join(ws, "scripts"), { recursive: true });
     mkdirSync(join(ws, "root-config", ".agents"), { recursive: true });
     writeFileSync(
       join(ws, "root-config", ".agents", "mcp.json"),

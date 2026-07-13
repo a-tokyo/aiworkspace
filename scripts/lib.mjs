@@ -607,10 +607,18 @@ export function buildMcpEnvMarkerBlock({ shell, envScriptPath }) {
   ].join("\n");
 }
 
-export function upsertMcpEnvMarkerBlock(content, block) {
+function findMcpEnvMarkerSpan(content) {
   const start = content.indexOf(MCP_ENV_MARKER_START);
-  const end = content.indexOf(MCP_ENV_MARKER_END);
-  if (start !== -1 && end !== -1 && end > start) {
+  if (start === -1) return null;
+  const end = content.indexOf(MCP_ENV_MARKER_END, start);
+  if (end === -1) return null;
+  return { start, end };
+}
+
+export function upsertMcpEnvMarkerBlock(content, block) {
+  const span = findMcpEnvMarkerSpan(content);
+  if (span) {
+    const { start, end } = span;
     const before = content.slice(0, start).replace(/\n?$/, "\n");
     const after = content.slice(end + MCP_ENV_MARKER_END.length).replace(/^\n?/, "\n");
     return `${before}${block}\n${after}`.replace(/\n{3,}/g, "\n\n").replace(/\n$/, "") + "\n";
@@ -628,16 +636,15 @@ export function isCliAvailable(command, spawnFn = spawnSync) {
 }
 
 export function extractMcpEnvMarkerBlock(content) {
-  const start = content.indexOf(MCP_ENV_MARKER_START);
-  const end = content.indexOf(MCP_ENV_MARKER_END);
-  if (start === -1 || end === -1 || end < start) return "(no managed block)";
-  return content.slice(start, end + MCP_ENV_MARKER_END.length);
+  const span = findMcpEnvMarkerSpan(content);
+  if (!span) return "(no managed block)";
+  return content.slice(span.start, span.end + MCP_ENV_MARKER_END.length);
 }
 
 export function removeMcpEnvMarkerBlock(content) {
-  const start = content.indexOf(MCP_ENV_MARKER_START);
-  const end = content.indexOf(MCP_ENV_MARKER_END);
-  if (start === -1 || end === -1 || end < start) return content;
+  const span = findMcpEnvMarkerSpan(content);
+  if (!span) return content;
+  const { start, end } = span;
   const before = content.slice(0, start).replace(/\n$/, "");
   const after = content.slice(end + MCP_ENV_MARKER_END.length).replace(/^\n/, "");
   if (before && after) return `${before}\n${after}\n`;
