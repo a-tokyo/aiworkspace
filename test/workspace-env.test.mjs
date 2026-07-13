@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { makeTmpDir } from "./helpers.mjs";
+import { isCliAvailable } from "../scripts/lib.mjs";
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -30,7 +31,7 @@ function seedWorkspace(ws, parent) {
 }
 
 describe("workspace-env.sh", () => {
-  it("no-ops when sourced without a scripts dir argument", () => {
+  it("no-ops when sourced without a scripts dir argument", { skip: !isCliAvailable("bash") }, () => {
     tmp = makeTmpDir();
     const ws = join(tmp.dir, "parent", "ws");
     seedWorkspace(ws, join(tmp.dir, "parent"));
@@ -41,7 +42,7 @@ describe("workspace-env.sh", () => {
     assert.equal(r.stdout.trim(), "ok");
   });
 
-  it("loads .env.local under bash when given the scripts dir", () => {
+  it("loads .env.local under bash when given the scripts dir", { skip: !isCliAvailable("bash") }, () => {
     tmp = makeTmpDir();
     const parent = join(tmp.dir, "parent");
     const ws = join(parent, "ws");
@@ -62,7 +63,7 @@ describe("workspace-env.sh", () => {
     assert.equal(r.stdout.trim(), "secret-from-file");
   });
 
-  it("loads .env.local under zsh when given the scripts dir", () => {
+  it("loads .env.local under zsh when given the scripts dir", { skip: !isCliAvailable("zsh") }, () => {
     tmp = makeTmpDir();
     const parent = join(tmp.dir, "parent");
     const ws = join(parent, "ws");

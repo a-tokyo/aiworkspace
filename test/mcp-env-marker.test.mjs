@@ -7,6 +7,8 @@ import {
   removeMcpEnvMarkerBlock,
   extractMcpEnvMarkerBlock,
   isCliAvailable,
+  resolvePwshProfilePath,
+  defaultWindowsPowerShell51Profile,
   MCP_ENV_MARKER_START,
   MCP_ENV_MARKER_END,
 } from "../scripts/lib.mjs";
@@ -40,6 +42,30 @@ describe("isCliAvailable", () => {
       isCliAvailable("pwsh", () => ({ status: 0, stdout: "/usr/bin/pwsh\n" })),
       true,
     );
+  });
+});
+
+describe("resolvePwshProfilePath", () => {
+  it("uses Windows PowerShell 5.1 profile when pwsh is absent on Windows", () => {
+    const home = "C:\\Users\\tester";
+    const path = resolvePwshProfilePath(home, {
+      platformName: "win32",
+      userProfile: "C:\\Users\\tester",
+      isCliAvailableFn: (cmd) => cmd === "powershell",
+      existsSyncFn: () => false,
+    });
+    assert.equal(path, defaultWindowsPowerShell51Profile(home, "C:\\Users\\tester"));
+  });
+
+  it("prefers PowerShell 7 profile when pwsh is available on Windows", () => {
+    const home = "C:\\Users\\tester";
+    const path = resolvePwshProfilePath(home, {
+      platformName: "win32",
+      userProfile: "C:\\Users\\tester",
+      isCliAvailableFn: (cmd) => cmd === "pwsh",
+      existsSyncFn: () => false,
+    });
+    assert.match(path, /Documents[\\/]PowerShell[\\/]Microsoft\.PowerShell_profile\.ps1$/);
   });
 });
 

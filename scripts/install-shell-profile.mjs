@@ -23,6 +23,7 @@ import {
   isCliAvailable,
   readBearerKeysFromMcp,
   readBearerKeysFromPathsFile,
+  resolvePwshProfilePath,
   MCP_ENV_MARKER_START,
 } from "./lib.mjs";
 
@@ -88,30 +89,17 @@ function writePathsFile(nodeBin, bearerKeys) {
   writeFileSync(PATHS_FILE, `${lines.join("\n")}\n`);
 }
 
-function defaultPwshProfile(home) {
-  if (platform() === "win32") {
-    const docs = process.env.USERPROFILE ?? home;
-    return join(docs, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1");
-  }
-  return join(home, ".config", "powershell", "Microsoft.PowerShell_profile.ps1");
-}
-
-function pwshAvailable(pwshProfile) {
-  if (existsSync(pwshProfile)) return true;
-  return isCliAvailable("pwsh");
-}
-
 function profileTargets(shell, home = homedir()) {
   const profiles = {
     zsh: join(home, ".zshrc"),
     bash: join(home, ".bashrc"),
-    pwsh: process.env.AIWORKSPACE_PWSH_PROFILE ?? defaultPwshProfile(home),
+    pwsh: resolvePwshProfilePath(home),
   };
   if (shell === "all") {
     const targets = [];
     if (platform() !== "win32") {
       targets.push(["zsh", profiles.zsh], ["bash", profiles.bash]);
-      if (pwshAvailable(profiles.pwsh)) targets.push(["pwsh", profiles.pwsh]);
+      if (isCliAvailable("pwsh") || existsSync(profiles.pwsh)) targets.push(["pwsh", profiles.pwsh]);
       return targets;
     }
     targets.push(["pwsh", profiles.pwsh]);

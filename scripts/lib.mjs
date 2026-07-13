@@ -608,6 +608,42 @@ function pwshQuotedPath(filePath) {
   return `'${filePath.replace(/'/g, "''")}'`;
 }
 
+/** PowerShell 7+ profile path on Windows. */
+export function defaultPwsh7Profile(home, userProfile = process.env.USERPROFILE) {
+  const docs = userProfile ?? home;
+  return join(docs, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1");
+}
+
+/** Windows PowerShell 5.1 profile path. */
+export function defaultWindowsPowerShell51Profile(home, userProfile = process.env.USERPROFILE) {
+  const docs = userProfile ?? home;
+  return join(docs, "Documents", "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1");
+}
+
+/**
+ * Pick the PowerShell profile path most likely to load on this machine.
+ * On Windows without pwsh, fall back to Windows PowerShell 5.1.
+ */
+export function resolvePwshProfilePath(
+  home,
+  {
+    platformName = platform(),
+    isCliAvailableFn = isCliAvailable,
+    existsSyncFn = existsSync,
+    override = process.env.AIWORKSPACE_PWSH_PROFILE,
+    userProfile = process.env.USERPROFILE,
+  } = {},
+) {
+  if (override) return override;
+  if (platformName === "win32") {
+    const pwsh7 = defaultPwsh7Profile(home, userProfile);
+    if (existsSyncFn(pwsh7) || isCliAvailableFn("pwsh")) return pwsh7;
+    if (isCliAvailableFn("powershell")) return defaultWindowsPowerShell51Profile(home, userProfile);
+    return pwsh7;
+  }
+  return join(home, ".config", "powershell", "Microsoft.PowerShell_profile.ps1");
+}
+
 export const MCP_ENV_MARKER_START = "# >>> aiworkspace-mcp-env >>>";
 export const MCP_ENV_MARKER_END = "# <<< aiworkspace-mcp-env <<<";
 
