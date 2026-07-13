@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import {
   collectHttpBearerVars,
   buildMcpEnvMarkerBlock,
@@ -77,7 +78,33 @@ describe("mcp env marker blocks", () => {
 
   it("builds posix marker block with baked scripts dir", () => {
     assert.match(block, new RegExp(MCP_ENV_MARKER_START.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(block, /__aiworkspace_mcp_env/);
     assert.match(block, /workspace-env\.sh.*\/tmp\/ws\/scripts/);
+    assert.match(block, /unset -f __aiworkspace_mcp_env/);
+  });
+
+  it("escapes shell metacharacters in posix marker block", () => {
+    const dangerous = buildMcpEnvMarkerBlock({
+      shell: "bash",
+      envScriptPath: "/tmp/$HOME/`whoami`/scripts/workspace-env.sh",
+    });
+    assert.match(dangerous, /\\\$HOME/);
+    assert.match(dangerous, /\\`whoami\\`/);
+    assert.match(dangerous, /__aiworkspace_mcp_env\(\)/);
+  });
+
+  it("posix marker block preserves positional parameters", { skip: !isCliAvailable("bash") }, () => {
+    const marker = buildMcpEnvMarkerBlock({
+      shell: "bash",
+      envScriptPath: "/nonexistent/workspace-env.sh",
+    });
+    const body = marker
+      .split("\n")
+      .filter((line) => !line.includes("aiworkspace-mcp-env") && !line.startsWith("#"))
+      .join("\n");
+    const r = spawnSync("bash", ["-c", `set -- kept-pos; ${body}; printf '%s' "$1"`], { encoding: "utf8" });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout, "kept-pos");
   });
 
   it("builds pwsh marker block with single-quoted paths", () => {

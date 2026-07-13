@@ -51,7 +51,8 @@ describe("install-shell-profile", () => {
     assert.match(content, /aiworkspace-mcp-env/);
     assert.match(content, /workspace-env\.sh/);
     assert.match(content, /# existing/);
-    assert.match(content, /workspace-env\.sh.*scripts/);
+    assert.match(content, /__aiworkspace_mcp_env/);
+    assert.match(content, /workspace-env\.sh/);
     assert.ok(existsSync(join(ws, "scripts", ".mcp-env.paths")));
     const paths = readFileSync(join(ws, "scripts", ".mcp-env.paths"), "utf8");
     assert.match(paths, /AIWORKSPACE_NODE=/);

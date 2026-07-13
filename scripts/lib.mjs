@@ -658,12 +658,14 @@ export function buildMcpEnvMarkerBlock({ shell, envScriptPath }) {
       MCP_ENV_MARKER_END,
     ].join("\n");
   }
-  const scriptQ = JSON.stringify(envScriptPath);
-  const dirQ = JSON.stringify(scriptsDir);
+  const scriptQ = shellQuotedPath(envScriptPath);
+  const dirQ = shellQuotedPath(scriptsDir);
   return [
     MCP_ENV_MARKER_START,
     "# MCP Bearer tokens for Cursor. Managed by: npm run mcp:install-shell",
-    `[ -f ${scriptQ} ] && . ${scriptQ} ${dirQ}`,
+    `__aiworkspace_mcp_env() { [ -f ${scriptQ} ] && . ${scriptQ} ${dirQ}; }`,
+    "__aiworkspace_mcp_env",
+    "unset -f __aiworkspace_mcp_env >/dev/null 2>&1 || true",
     MCP_ENV_MARKER_END,
   ].join("\n");
 }
