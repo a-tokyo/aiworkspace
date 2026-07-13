@@ -131,6 +131,15 @@ This appends a marked block to your shell profile (`~/.zshrc`, `~/.bashrc`, and/
 npm run mcp:install-shell -- --persist
 ```
 
+**Without a login profile** — vars stay in one terminal session only (Dock-launched Cursor won't see them):
+
+```bash
+cd ~/dev/<your-org>
+set -a && source .env.local && set +a && cursor .
+```
+
+`direnv` with `dotenv .env.local` works the same if you use it. Prefer OAuth MCP servers when you can; VS Code loads Bearer tokens from `.env.local` via `envFile` without a shell step.
+
 **Manual fallback (macOS / Linux)** — add to `~/.zshrc` or `~/.bashrc` (adjust the path to your parent workspace root):
 
 ```bash
