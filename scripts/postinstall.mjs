@@ -7,9 +7,10 @@
  * Replaces inline shell script to work on Windows (cmd.exe) and Unix.
  */
 
+import { existsSync, readFileSync } from "node:fs";
 import { join, sep } from "node:path";
 import { spawnSync } from "node:child_process";
-import { REPO_DIR, ROOT_CONFIG } from "./lib.mjs";
+import { REPO_DIR, ROOT_CONFIG, resolveSkillsBin, nonInteractiveGitEnv } from "./lib.mjs";
 
 // When installed as a devDependency, REPO_DIR is .../node_modules/aiworkspace — skip.
 // Check specifically for node_modules/aiworkspace to avoid false positives on
@@ -20,13 +21,38 @@ if (nmIdx !== -1 && segments[nmIdx + 1] === "aiworkspace") {
   process.exit(0);
 }
 
-function trySkillsInstall(cwd) {
+function lockHasSkills(cwd) {
   try {
-    spawnSync("npx", ["skills", "experimental_install"], {
-      cwd,
-      stdio: "ignore",
-      shell: process.platform === "win32",
-    });
+    const lock = JSON.parse(readFileSync(join(cwd, "skills-lock.json"), "utf8"));
+    return Object.keys(lock?.skills ?? {}).length > 0;
+  } catch { return false; }
+}
+
+function trySkillsInstall(cwd) {
+  // Nothing to restore — stay quiet (fresh scaffolds have an empty lock).
+  if (!lockHasSkills(cwd)) return;
+  try {
+    const bin = resolveSkillsBin();
+    const useLocal = existsSync(bin);
+    // Prefer the installed bin over `npx` (npx adds a resolution path that can
+    // stall or hit the registry). Stream progress — swallowing it (stdio:"ignore")
+    // is what made a slow multi-clone restore look frozen with no output.
+    console.log("Restoring skills from skills-lock.json (first run may take a moment)…");
+    const result = spawnSync(
+      useLocal ? bin : "npx",
+      useLocal ? ["experimental_install"] : ["skills", "experimental_install"],
+      {
+        cwd,
+        stdio: "inherit",
+        timeout: 300_000,
+        killSignal: "SIGKILL",
+        env: nonInteractiveGitEnv(),
+        shell: process.platform === "win32",
+      },
+    );
+    if (result.signal) {
+      console.warn(`  ⚠ Skill restore timed out — run \`npm run skills:setup\` later.`);
+    }
   } catch { /* best-effort */ }
 }
 

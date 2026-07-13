@@ -238,6 +238,21 @@ export function resolveSkillsBin() {
 }
 
 /**
+ * Env overrides that make git/ssh/credential-manager fail fast instead of
+ * prompting on /dev/tty. Interactive prompts read the controlling terminal
+ * directly, which `stdio: "ignore"` does NOT redirect — so without these a
+ * clone can block a `npm install` indefinitely waiting for input.
+ */
+export function nonInteractiveGitEnv(base = process.env) {
+  return {
+    ...base,
+    GIT_TERMINAL_PROMPT: "0",
+    GIT_SSH_COMMAND: base.GIT_SSH_COMMAND || "ssh -oBatchMode=yes",
+    GCM_INTERACTIVE: "never",
+  };
+}
+
+/**
  * Remove symlinks the skills CLI creates inside a directory for each tool
  * (.cursor/skills/, .claude/skills/, and bare skills/ for OpenClaw).
  * We manage these ourselves via setup-skills.
@@ -461,6 +476,21 @@ export const MCP_TEMPLATE_REL_PATHS = [
 
 // ── MCP placeholder / secret helpers ────────────────────────────────────
 
+/**
+ * Transport of an MCP server, inferred when `type` is absent.
+ *
+ * Claude Code and Cursor both accept a bare `{ command, args }` (no `type`), so
+ * keying behaviour off `config.type` alone silently skips those servers — they
+ * escape secret-wrapping and drop out of the Codex twin. Infer from shape.
+ */
+export function serverKind(config) {
+  if (!config || typeof config !== "object" || Array.isArray(config)) return null;
+  if (typeof config.type === "string" && config.type) return config.type;
+  if (config.command) return "stdio";
+  if (config.url) return "http";
+  return null;
+}
+
 export const MCP_PLACEHOLDER_RE = /\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
 export function hasMcpPlaceholder(value) {
@@ -503,7 +533,7 @@ export function mcpLoadEnvRel(repoDir = REPO_DIR) {
 }
 
 export function isMcpLoadEnvWrapped(config) {
-  if (!config || config.type !== "stdio") return false;
+  if (serverKind(config) !== "stdio") return false;
   const args = config.args ?? [];
   return config.command === "node"
     && args.some((a) => typeof a === "string" && a.includes("mcp-load-env.mjs"));
@@ -539,7 +569,7 @@ export function secretVarsForMcpServer(_name, config) {
  */
 export function httpBearerVarsForMcpServer(config) {
   const vars = new Set();
-  if (!config || config.type !== "http") return vars;
+  if (serverKind(config) !== "http") return vars;
   const auth = config.headers?.Authorization;
   if (typeof auth !== "string" || !/^Bearer\s/i.test(auth)) return vars;
   for (const m of auth.matchAll(/\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}/g)) vars.add(m[1]);

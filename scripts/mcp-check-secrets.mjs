@@ -62,7 +62,7 @@ const required = new Set();
 // HTTP servers that carry a Bearer ${VAR} header — not portable across editors.
 const httpBearer = [];
 for (const [name, config] of Object.entries(parsed.mcpServers)) {
-  if (config?.type === "stdio" && isMcpLoadEnvWrapped(config)) {
+  if (isMcpLoadEnvWrapped(config)) {
     for (const v of secretVarsForMcpServer(name, config)) required.add(v);
   }
   const bearerVars = httpBearerVarsForMcpServer(config);
