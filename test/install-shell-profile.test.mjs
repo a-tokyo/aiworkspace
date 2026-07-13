@@ -1,4 +1,5 @@
 import { describe, it, afterEach } from "node:test";
+import { platform } from "node:os";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync } from "node:fs";
 import { join } from "node:path";
@@ -94,5 +95,27 @@ describe("install-shell-profile", () => {
     );
     assert.equal(r.status, 0);
     assert.match(r.stdout, /nothing to install/i);
+  });
+
+  it("with --shell all on unix skips pwsh when not installed", { skip: platform() === "win32" }, () => {
+    tmp = makeTmpDir();
+    const home = join(tmp.dir, "home");
+    const ws = join(tmp.dir, "parent", "ws");
+    mkdirSync(home, { recursive: true });
+    seedWorkspace(ws, join(tmp.dir, "parent"));
+
+    const pwshProfile = join(home, ".config", "powershell", "Microsoft.PowerShell_profile.ps1");
+    const r = spawnSync(
+      process.execPath,
+      [join(ws, "scripts", "install-shell-profile.mjs"), "--yes", "--shell", "all"],
+      {
+        cwd: ws,
+        encoding: "utf8",
+        env: { ...process.env, HOME: home, PATH: "/usr/bin:/bin:/usr/sbin:/sbin" },
+      },
+    );
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(existsSync(join(home, ".zshrc")));
+    assert.ok(!existsSync(pwshProfile), "pwsh profile should not be created without pwsh installed");
   });
 });

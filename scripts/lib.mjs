@@ -619,6 +619,13 @@ export function upsertMcpEnvMarkerBlock(content, block) {
   return (trimmed ? `${trimmed}\n\n` : "") + `${block}\n`;
 }
 
+export function extractMcpEnvMarkerBlock(content) {
+  const start = content.indexOf(MCP_ENV_MARKER_START);
+  const end = content.indexOf(MCP_ENV_MARKER_END);
+  if (start === -1 || end === -1 || end < start) return "(no managed block)";
+  return content.slice(start, end + MCP_ENV_MARKER_END.length);
+}
+
 export function removeMcpEnvMarkerBlock(content) {
   const start = content.indexOf(MCP_ENV_MARKER_START);
   const end = content.indexOf(MCP_ENV_MARKER_END);

@@ -9,7 +9,7 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir, platform } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
@@ -21,6 +21,7 @@ import {
   buildMcpEnvMarkerBlock,
   upsertMcpEnvMarkerBlock,
   removeMcpEnvMarkerBlock,
+  extractMcpEnvMarkerBlock,
   MCP_ENV_MARKER_START,
 } from "./lib.mjs";
 import { loadEnvLocal } from "./mcp-load-env.mjs";
@@ -87,6 +88,14 @@ function defaultPwshProfile(home) {
   return join(home, ".config", "powershell", "Microsoft.PowerShell_profile.ps1");
 }
 
+function pwshAvailable(pwshProfile) {
+  if (existsSync(pwshProfile)) return true;
+  const which = platform() === "win32"
+    ? spawnSync("where", ["pwsh"], { encoding: "utf8" })
+    : spawnSync("which", ["pwsh"], { encoding: "utf8" });
+  return which.status === 0 && Boolean(which.stdout.trim());
+}
+
 function profileTargets(shell, home = homedir()) {
   const all = {
     zsh: join(home, ".zshrc"),
@@ -97,6 +106,8 @@ function profileTargets(shell, home = homedir()) {
     const targets = [];
     if (platform() !== "win32") {
       targets.push(["zsh", all.zsh], ["bash", all.bash]);
+      if (pwshAvailable(all.pwsh)) targets.push(["pwsh", all.pwsh]);
+      return targets;
     }
     targets.push(["pwsh", all.pwsh]);
     return targets;
@@ -111,19 +122,21 @@ function readProfile(path) {
 }
 
 function writeProfile(path, content) {
-  mkdirSync(join(path, ".."), { recursive: true });
+  mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, content);
 }
 
 function renderDiff(before, after, label) {
-  if (before === after) {
+  const beforeBlock = extractMcpEnvMarkerBlock(before);
+  const afterBlock = extractMcpEnvMarkerBlock(after);
+  if (beforeBlock === afterBlock) {
     console.log(`  (no changes) ${label}`);
     return;
   }
-  console.log(`\n--- ${label} (before)`);
-  console.log(before || "(empty)");
-  console.log(`+++ ${label} (after)`);
-  console.log(after || "(empty)");
+  console.log(`\n--- ${label} (managed block, before)`);
+  console.log(beforeBlock);
+  console.log(`+++ ${label} (managed block, after)`);
+  console.log(afterBlock);
 }
 
 async function confirmApply(changes) {
@@ -155,19 +168,21 @@ function persistWindowsUserEnv(keys) {
   for (const key of keys) {
     const value = fileEnv[key];
     if (typeof value !== "string" || value === "") continue;
-    try {
-      spawnSync(
-        "powershell",
-        [
-          "-NoProfile",
-          "-Command",
-          `[Environment]::SetEnvironmentVariable('${key.replace(/'/g, "''")}', '${value.replace(/'/g, "''")}', 'User')`,
-        ],
-        { stdio: "ignore" },
-      );
+    const r = spawnSync(
+      "powershell",
+      [
+        "-NoProfile",
+        "-Command",
+        `[Environment]::SetEnvironmentVariable('${key.replace(/'/g, "''")}', '${value.replace(/'/g, "''")}', 'User')`,
+      ],
+      { stdio: "ignore" },
+    );
+    if (r.error) {
+      console.warn(`  ⚠ Could not set User env ${key}: ${r.error.message}`);
+    } else if (r.status !== 0) {
+      console.warn(`  ⚠ Could not set User env ${key}: powershell exited ${r.status}`);
+    } else {
       console.log(`  ✓ User env: ${key}`);
-    } catch (err) {
-      console.warn(`  ⚠ Could not set User env ${key}: ${err.message}`);
     }
   }
 }

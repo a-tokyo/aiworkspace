@@ -66,6 +66,15 @@ BAZ="quoted"
     assert.equal(out.MY_API_KEY, "secret");
   });
 
+  it("--dump-env prints JSON from a file path", () => {
+    tmp = makeTmpDir();
+    const envPath = join(tmp.dir, ".env.local");
+    writeFileSync(envPath, 'export FOO="bar" # note\n');
+    const r = spawnSync(process.execPath, [SCRIPT, "--dump-env", envPath], { encoding: "utf8" });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(JSON.parse(r.stdout), { FOO: "bar" });
+  });
+
   it("--headers prints JSON authorization header", () => {
     tmp = makeTmpDir();
     const ws = join(tmp.dir, "workspace");

@@ -5,6 +5,7 @@ import {
   buildMcpEnvMarkerBlock,
   upsertMcpEnvMarkerBlock,
   removeMcpEnvMarkerBlock,
+  extractMcpEnvMarkerBlock,
   MCP_ENV_MARKER_START,
 } from "../scripts/lib.mjs";
 
@@ -55,5 +56,13 @@ describe("mcp env marker blocks", () => {
     const stripped = removeMcpEnvMarkerBlock(content);
     assert.match(stripped, /^before\n\n?$/);
     assert.doesNotMatch(stripped, /aiworkspace-mcp-env/);
+  });
+
+  it("extracts only the managed marker region", () => {
+    const content = upsertMcpEnvMarkerBlock("SECRET=do-not-leak\nbefore\n", block);
+    const extracted = extractMcpEnvMarkerBlock(content);
+    assert.match(extracted, /aiworkspace-mcp-env/);
+    assert.doesNotMatch(extracted, /SECRET=do-not-leak/);
+    assert.equal(extractMcpEnvMarkerBlock("no block here"), "(no managed block)");
   });
 });

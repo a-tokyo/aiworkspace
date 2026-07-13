@@ -118,6 +118,13 @@ export function buildChildEnv(fileEnv, { only = null, maps = [] } = {}) {
 }
 
 function parseArgs(argv) {
+  const dumpIdx = argv.indexOf("--dump-env");
+  if (dumpIdx !== -1) {
+    const next = argv[dumpIdx + 1];
+    const path = next && !next.startsWith("--") ? next : ENV_LOCAL;
+    return { mode: "dump-env", path };
+  }
+
   const execIdx = argv.indexOf("--exec");
   if (execIdx !== -1) {
     const sep = argv.indexOf("--", execIdx);
@@ -154,6 +161,12 @@ function parseArgs(argv) {
 
 function main() {
   const opts = parseArgs(process.argv.slice(2));
+
+  if (opts.mode === "dump-env") {
+    process.stdout.write(JSON.stringify(loadEnvLocal(opts.path)));
+    return;
+  }
+
   const fileEnv = loadEnvLocal();
 
   if (opts.mode === "headers") {
@@ -197,6 +210,6 @@ function main() {
 }
 
 const cliArgv = process.argv.slice(2);
-if (cliArgv.includes("--exec") || cliArgv.includes("--headers")) {
+if (cliArgv.includes("--exec") || cliArgv.includes("--headers") || cliArgv.includes("--dump-env")) {
   main();
 }
