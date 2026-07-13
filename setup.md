@@ -88,6 +88,8 @@ Then **restart your editor** (MCP reads config at startup).
 
 `.env.local` is gitignored. `.env.example` lives in `root-config/` and is symlinked to the parent root. OAuth HTTP servers (e.g. Slack) use the editor's sign-in flow — no `.env.local` entry needed.
 
+**Prefix secret keys when loading into a shell.** Bearer tokens for Cursor are often loaded via `mcp:install-shell` or a manual `source` of `.env.local` in `~/.zshrc` / `~/.bashrc`. Those variables then live in your login shell (and on macOS, may be pushed to `launchctl` for Dock-launched apps). Use a workspace-specific prefix in `.env.example` and matching `${env:VAR}` / `${VAR}` placeholders in `mcp.json` — for example `ACME_SONAR_TOKEN` rather than `SONAR_TOKEN` — to avoid clashing with other projects, CLI tools, or generic names. Keep the same names in `.env.local`, `mcp.json`, and `.env.example`.
+
 #### Stdio servers (automatic)
 
 `npm run sync` wraps secret-bearing **stdio** servers that use `${VAR}` placeholders with a built-in env loader (`mcp-load-env.mjs`). Those read `.env.local` directly — no shell profile changes, no direnv, no extra packages.

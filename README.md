@@ -119,6 +119,8 @@ npm run mcp:check-secrets      # verify tokens are present
 
 Stdio servers using `${VAR}` are wrapped automatically to load `.env.local`. See [setup.md §4.1](setup.md#41-mcp-secrets) for HTTP Bearer servers in Cursor and OAuth sign-in for Codex.
 
+**Env var naming.** If you load `.env.local` into your shell (via `npm run mcp:install-shell` or a manual `source` in `~/.zshrc`), those keys become part of your login environment. Prefer a workspace-specific prefix on secret names in `.env.example` and `mcp.json` (e.g. `ACME_SONAR_TOKEN` instead of `SONAR_TOKEN`) so they do not collide with other tools or projects. Stdio-only secrets that stay inside the MCP env loader are less exposed, but a consistent prefix keeps Bearer and stdio configs aligned.
+
 ## Upgrading
 
 **Template upgrade** — pull latest managed `scripts/` when a new aiworkspace release is published:
