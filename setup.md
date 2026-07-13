@@ -112,15 +112,30 @@ Use Cursor's `${env:NAME}` syntax in canonical `mcp.json` for HTTP headers (not 
 | **Codex** | `bearer_token_env_var` in `.codex/config.toml` — set the var in your shell |
 | **Cursor** | `${env:NAME}` reads from the **process environment at Cursor startup** — not from `envFile` (stdio only) |
 
-So for **Cursor**, load `.env.local` into the process environment before Cursor starts:
+So for **Cursor**, load Bearer tokens into the process environment before Cursor starts.
 
-**macOS / Linux (bash or zsh)** — add this **one-time** line to `~/.zshrc` or `~/.bashrc` (adjust the path to your parent workspace root):
+**Recommended (all platforms)** — from your workspace repo:
+
+```bash
+cd path/to/your-workspace-repo
+npm run mcp:install-shell
+```
+
+This appends a marked block to your shell profile (`~/.zshrc`, `~/.bashrc`, and/or PowerShell `$PROFILE`). On macOS it also runs `launchctl setenv` for Bearer keys so Dock-launched Cursor inherits them. Re-run after moving the repo or changing Bearer vars in `mcp.json`. Remove with `npm run mcp:uninstall-shell`.
+
+**Windows GUI apps:** add `--persist` to write User environment variables from `.env.local`:
+
+```bash
+npm run mcp:install-shell -- --persist
+```
+
+**Manual fallback (macOS / Linux)** — add to `~/.zshrc` or `~/.bashrc` (adjust the path to your parent workspace root):
 
 ```bash
 [ -f "$HOME/dev/<your-org>/.env.local" ] && set -a && source "$HOME/dev/<your-org>/.env.local" && set +a
 ```
 
-**Windows (PowerShell)** — add to your PowerShell profile, or run before starting Cursor:
+**Manual fallback (Windows PowerShell)** — add to your PowerShell profile, or run before starting Cursor:
 
 ```powershell
 $envFile = "$env:USERPROFILE\dev\<your-org>\.env.local"

@@ -12,3 +12,4 @@ node_modules
 .cursor/skills/
 # Personal Claude overrides — copy from settings.local.json.example; never commit
 root-config/.claude/settings.local.json
+scripts/.mcp-env.paths

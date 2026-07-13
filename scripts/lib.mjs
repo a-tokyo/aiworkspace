@@ -576,6 +576,61 @@ export function httpBearerVarsForMcpServer(config) {
   return vars;
 }
 
+/** All Bearer header env vars across MCP servers (sorted array). */
+export function collectHttpBearerVars(mcpServers) {
+  const vars = new Set();
+  if (!mcpServers || typeof mcpServers !== "object") return [];
+  for (const config of Object.values(mcpServers)) {
+    for (const v of httpBearerVarsForMcpServer(config)) vars.add(v);
+  }
+  return [...vars].sort();
+}
+
+export const MCP_ENV_MARKER_START = "# >>> aiworkspace-mcp-env >>>";
+export const MCP_ENV_MARKER_END = "# <<< aiworkspace-mcp-env <<<";
+
+export function buildMcpEnvMarkerBlock({ shell, envScriptPath }) {
+  const q = JSON.stringify(envScriptPath);
+  if (shell === "pwsh") {
+    return [
+      MCP_ENV_MARKER_START,
+      "# MCP Bearer tokens for Cursor. Managed by: npm run mcp:install-shell",
+      `if (Test-Path ${q}) { . ${q} }`,
+      MCP_ENV_MARKER_END,
+    ].join("\n");
+  }
+  return [
+    MCP_ENV_MARKER_START,
+    "# MCP Bearer tokens for Cursor. Managed by: npm run mcp:install-shell",
+    `[ -f ${q} ] && . ${q}`,
+    MCP_ENV_MARKER_END,
+  ].join("\n");
+}
+
+export function upsertMcpEnvMarkerBlock(content, block) {
+  const start = content.indexOf(MCP_ENV_MARKER_START);
+  const end = content.indexOf(MCP_ENV_MARKER_END);
+  if (start !== -1 && end !== -1 && end > start) {
+    const before = content.slice(0, start).replace(/\n?$/, "\n");
+    const after = content.slice(end + MCP_ENV_MARKER_END.length).replace(/^\n?/, "\n");
+    return `${before}${block}\n${after}`.replace(/\n{3,}/g, "\n\n").replace(/\n$/, "") + "\n";
+  }
+  const trimmed = content.replace(/\n?$/, "");
+  return (trimmed ? `${trimmed}\n\n` : "") + `${block}\n`;
+}
+
+export function removeMcpEnvMarkerBlock(content) {
+  const start = content.indexOf(MCP_ENV_MARKER_START);
+  const end = content.indexOf(MCP_ENV_MARKER_END);
+  if (start === -1 || end === -1 || end < start) return content;
+  const before = content.slice(0, start).replace(/\n$/, "");
+  const after = content.slice(end + MCP_ENV_MARKER_END.length).replace(/^\n/, "");
+  if (before && after) return `${before}\n${after}\n`;
+  if (before) return `${before}\n`;
+  if (after) return `${after}\n`;
+  return "";
+}
+
 // ── package.json script merge ────────────────────────────────────────────
 
 /**
