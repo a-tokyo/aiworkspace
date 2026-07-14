@@ -1,6 +1,8 @@
-import { describe, it } from "node:test";
+import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   collectHttpBearerVars,
   buildMcpEnvMarkerBlock,
@@ -8,11 +10,13 @@ import {
   removeMcpEnvMarkerBlock,
   extractMcpEnvMarkerBlock,
   isCliAvailable,
+  mcpEnvInstanceId,
   resolvePwshProfilePath,
   defaultWindowsPowerShell51Profile,
   MCP_ENV_MARKER_START,
   MCP_ENV_MARKER_END,
 } from "../scripts/lib.mjs";
+import { makeTmpDir } from "./helpers.mjs";
 
 describe("collectHttpBearerVars", () => {
   it("collects Bearer header placeholders from HTTP servers", () => {
@@ -139,27 +143,75 @@ describe("mcp env marker blocks", () => {
     assert.doesNotMatch(pwshBlock, /USERPROFILE/);
   });
 
-  it("appends then replaces marker region", () => {
-    const first = upsertMcpEnvMarkerBlock("# custom\n", block);
-    const next = buildMcpEnvMarkerBlock({
-      shell: "zsh",
-      envScriptPath: "/new/path/workspace-env.sh",
-    });
-    const second = upsertMcpEnvMarkerBlock(first, next);
+  it("replaces the same clone's own block when its content changes", () => {
+    const id = "aaaa1111";
+    const original = buildMcpEnvMarkerBlock({ shell: "zsh", envScriptPath: "/tmp/ws/scripts/workspace-env.sh", id });
+    const first = upsertMcpEnvMarkerBlock("# custom\n", { id, block: original });
+    const updated = buildMcpEnvMarkerBlock({ shell: "zsh", envScriptPath: "/new/path/workspace-env.sh", id });
+    const second = upsertMcpEnvMarkerBlock(first, { id, block: updated });
     assert.match(second, /\/new\/path\/workspace-env\.sh/);
     assert.doesNotMatch(second, /\/tmp\/ws\/scripts/);
     assert.match(second, /# custom/);
+    assert.equal(second.match(/aiworkspace-mcp-env:aaaa1111/g)?.length, 2);
+  });
+
+  it("appends a different clone's block instead of clobbering an existing one", () => {
+    const idA = "aaaa1111";
+    const idB = "bbbb2222";
+    const blockA = buildMcpEnvMarkerBlock({ shell: "zsh", envScriptPath: "/tmp/ws/scripts/workspace-env.sh", id: idA });
+    const first = upsertMcpEnvMarkerBlock("# custom\n", { id: idA, block: blockA });
+    const blockB = buildMcpEnvMarkerBlock({ shell: "zsh", envScriptPath: "/new/path/workspace-env.sh", id: idB });
+    const second = upsertMcpEnvMarkerBlock(first, { id: idB, block: blockB });
+    assert.match(second, /\/tmp\/ws\/scripts/);
+    assert.match(second, /\/new\/path\/workspace-env\.sh/);
+    assert.match(second, /# custom/);
+  });
+
+  it("migrates a legacy (pre-fix) block in place when it's unmistakably this clone's own", () => {
+    const legacy = buildMcpEnvMarkerBlock({ shell: "zsh", envScriptPath: "/tmp/ws/scripts/workspace-env.sh" });
+    const withLegacy = upsertMcpEnvMarkerBlock("# custom\n", { block: legacy });
+    assert.match(withLegacy, /# >>> aiworkspace-mcp-env >>>/);
+
+    const migrated = buildMcpEnvMarkerBlock({ shell: "zsh", envScriptPath: "/tmp/ws/scripts/workspace-env.sh", id: "aaaa1111" });
+    const after = upsertMcpEnvMarkerBlock(withLegacy, { id: "aaaa1111", block: migrated });
+    assert.doesNotMatch(after, /# >>> aiworkspace-mcp-env >>>/);
+    assert.match(after, /aiworkspace-mcp-env:aaaa1111/);
+    assert.equal(after.match(/# >>> aiworkspace-mcp-env/g)?.length, 1);
+  });
+
+  it("leaves a foreign legacy block untouched when its body doesn't match", () => {
+    const foreignLegacy = buildMcpEnvMarkerBlock({ shell: "zsh", envScriptPath: "/some/other/workspace-env.sh" });
+    const withForeign = upsertMcpEnvMarkerBlock("# custom\n", { block: foreignLegacy });
+
+    const mine = buildMcpEnvMarkerBlock({ shell: "zsh", envScriptPath: "/tmp/ws/scripts/workspace-env.sh", id: "aaaa1111" });
+    const after = upsertMcpEnvMarkerBlock(withForeign, { id: "aaaa1111", block: mine });
+    assert.match(after, /# >>> aiworkspace-mcp-env >>>/);
+    assert.match(after, /\/some\/other\/workspace-env\.sh/);
+    assert.match(after, /aiworkspace-mcp-env:aaaa1111/);
+    assert.match(after, /\/tmp\/ws\/scripts\/workspace-env\.sh/);
   });
 
   it("removes only marked region", () => {
-    const content = upsertMcpEnvMarkerBlock("before\n", block);
-    const stripped = removeMcpEnvMarkerBlock(content);
+    const content = upsertMcpEnvMarkerBlock("before\n", { block });
+    const stripped = removeMcpEnvMarkerBlock(content, { block });
     assert.match(stripped, /^before\n\n?$/);
     assert.doesNotMatch(stripped, /aiworkspace-mcp-env/);
   });
 
+  it("removing one clone's block leaves another clone's block intact", () => {
+    const idA = "aaaa1111";
+    const idB = "bbbb2222";
+    const blockA = buildMcpEnvMarkerBlock({ shell: "zsh", envScriptPath: "/tmp/ws/scripts/workspace-env.sh", id: idA });
+    const blockB = buildMcpEnvMarkerBlock({ shell: "zsh", envScriptPath: "/new/path/workspace-env.sh", id: idB });
+    const both = upsertMcpEnvMarkerBlock(upsertMcpEnvMarkerBlock("# custom\n", { id: idA, block: blockA }), { id: idB, block: blockB });
+    const after = removeMcpEnvMarkerBlock(both, { id: idA, block: blockA });
+    assert.doesNotMatch(after, /aiworkspace-mcp-env:aaaa1111/);
+    assert.match(after, /aiworkspace-mcp-env:bbbb2222/);
+    assert.match(after, /\/new\/path\/workspace-env\.sh/);
+  });
+
   it("extracts only the managed marker region", () => {
-    const content = upsertMcpEnvMarkerBlock("SECRET=do-not-leak\nbefore\n", block);
+    const content = upsertMcpEnvMarkerBlock("SECRET=do-not-leak\nbefore\n", { block });
     const extracted = extractMcpEnvMarkerBlock(content);
     assert.match(extracted, /aiworkspace-mcp-env/);
     assert.doesNotMatch(extracted, /SECRET=do-not-leak/);
@@ -168,15 +220,15 @@ describe("mcp env marker blocks", () => {
 
   it("preserves blank lines outside the managed block", () => {
     const content = "line1\n\n\n\nline2\n";
-    const inserted = upsertMcpEnvMarkerBlock(content, block);
+    const inserted = upsertMcpEnvMarkerBlock(content, { block });
     assert.match(inserted, /\n\n\n\nline2/);
   });
 
   it("ignores an end marker that appears before the start marker", () => {
     const strayEnd = `${MCP_ENV_MARKER_END}\nnoise\n`;
-    const content = upsertMcpEnvMarkerBlock(strayEnd, block);
+    const content = upsertMcpEnvMarkerBlock(strayEnd, { block });
     assert.equal(content.match(new RegExp(MCP_ENV_MARKER_START.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"))?.length, 1);
-    const stripped = removeMcpEnvMarkerBlock(content);
+    const stripped = removeMcpEnvMarkerBlock(content, { block });
     assert.doesNotMatch(stripped, new RegExp(MCP_ENV_MARKER_START.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.match(stripped, /noise/);
   });
@@ -187,11 +239,56 @@ describe("mcp env marker blocks", () => {
       envScriptPath: "D:\\ws\\scripts\\workspace-env.ps1",
       home: "C:\\Users\\alice",
     });
-    const inserted = upsertMcpEnvMarkerBlock("before\r\n", crlfBlock);
+    const inserted = upsertMcpEnvMarkerBlock("before\r\n", { block: crlfBlock });
     assert.match(inserted, /\r\n/);
     assert.match(inserted, /aiworkspace-mcp-env/);
-    const stripped = removeMcpEnvMarkerBlock(inserted);
+    const stripped = removeMcpEnvMarkerBlock(inserted, { block: crlfBlock });
     assert.doesNotMatch(stripped, /aiworkspace-mcp-env/);
     assert.match(stripped, /^before\r\n/);
+  });
+});
+
+describe("mcpEnvInstanceId", () => {
+  let tmp;
+  afterEach(() => tmp?.cleanup());
+
+  it("creates and persists an id under local/ on first call", () => {
+    tmp = makeTmpDir();
+    const id = mcpEnvInstanceId({ repoDir: tmp.dir });
+    assert.match(id, /^[0-9a-f]{8}$/);
+    assert.equal(readFileSync(join(tmp.dir, "local", ".mcp-env.id"), "utf8").trim(), id);
+  });
+
+  it("reuses the same id on subsequent calls (survives across calls, e.g. after moving the repo)", () => {
+    tmp = makeTmpDir();
+    const first = mcpEnvInstanceId({ repoDir: tmp.dir });
+    const second = mcpEnvInstanceId({ repoDir: tmp.dir });
+    assert.equal(first, second);
+  });
+
+  it("two separate repo dirs mint distinct ids", () => {
+    const tmpA = makeTmpDir();
+    const tmpB = makeTmpDir();
+    try {
+      const idA = mcpEnvInstanceId({ repoDir: tmpA.dir });
+      const idB = mcpEnvInstanceId({ repoDir: tmpB.dir });
+      assert.notEqual(idA, idB);
+    } finally {
+      tmpA.cleanup();
+      tmpB.cleanup();
+    }
+  });
+
+  it("with create:false, returns null instead of minting an id", () => {
+    tmp = makeTmpDir();
+    const id = mcpEnvInstanceId({ repoDir: tmp.dir, create: false });
+    assert.equal(id, null);
+  });
+
+  it("with create:false, still reads an existing id without regenerating it", () => {
+    tmp = makeTmpDir();
+    mkdirSync(join(tmp.dir, "local"), { recursive: true });
+    writeFileSync(join(tmp.dir, "local", ".mcp-env.id"), "deadbeef\n");
+    assert.equal(mcpEnvInstanceId({ repoDir: tmp.dir, create: false }), "deadbeef");
   });
 });

@@ -125,6 +125,8 @@ npm run mcp:install-shell
 
 This appends a marked block to your shell profile (`~/.zshrc`, `~/.bashrc`, and/or PowerShell `$PROFILE`). On macOS it also runs `launchctl setenv` for Bearer keys so Dock-launched Cursor inherits them. Re-run after moving the repo or changing Bearer vars in `mcp.json`. Remove with `npm run mcp:uninstall-shell`.
 
+**Multiple clones on one machine.** Each clone gets its own independently identified block (a per-clone id in `local/.mcp-env.id`), so running `mcp:install-shell`/`mcp:uninstall-shell` from one workspace never touches another workspace's block in the same shell profile. Moving a clone (`mv`) preserves its identity as long as `local/.mcp-env.id` travels with it, so re-running `mcp:install-shell` still updates that clone's own block in place instead of adding a duplicate. Marker isolation doesn't cover same-named Bearer keys, though — two clones both exporting e.g. `GITHUB_PAT` still collide at the OS-env level, so prefix your key names as described above.
+
 **Windows GUI apps:** add `--persist` to write User environment variables from `.env.local`:
 
 ```bash
