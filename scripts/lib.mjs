@@ -897,6 +897,14 @@ export function formatJsonSettings(contentOrObject) {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
+/** True when both sides parse as JSON objects with the same normalized content. */
+export function jsonSettingsSemanticallyEqual(contentA, contentB) {
+  const formattedA = formatJsonSettings(contentA);
+  const formattedB = formatJsonSettings(contentB);
+  if (formattedA === null || formattedB === null) return false;
+  return formattedA === formattedB;
+}
+
 export function nextAvailableBackupPath(filePath) {
   let candidate = `${filePath}.bak`;
   let index = 1;
@@ -924,7 +932,7 @@ export function prepareMirroredSettingsMigration(canonicalPath, localPath, fileN
   const canonical = readFileSync(canonicalPath, "utf8");
   const local = readFileSync(localPath, "utf8");
 
-  if (canonical === local) {
+  if (canonical === local || jsonSettingsSemanticallyEqual(canonical, local)) {
     unlinkSync(localPath);
     return { action: "removed-identical" };
   }

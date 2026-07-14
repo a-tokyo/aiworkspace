@@ -71,6 +71,21 @@ describe("prepareMirroredSettingsMigration", () => {
     assert.equal(existsSync(local), false);
     assert.equal(existsSync(`${local}.bak`), false);
   });
+
+  it("treats semantically identical JSON with different formatting as removed-identical", () => {
+    tmp = makeTmpDir();
+    const canonical = join(tmp.dir, "settings.json");
+    const local = join(tmp.dir, "local", "settings.json");
+    mkdirSync(join(tmp.dir, "local"), { recursive: true });
+    const value = { plugins: { shared: { enabled: true } } };
+    writeFileSync(canonical, JSON.stringify(value, null, 2) + "\n");
+    writeFileSync(local, `${JSON.stringify(value)}\n`);
+
+    const result = prepareMirroredSettingsMigration(canonical, local, "settings.json");
+    assert.equal(result.action, "removed-identical");
+    assert.equal(existsSync(local), false);
+    assert.equal(existsSync(`${local}.bak`), false);
+  });
 });
 
 describe("setup-skills cursor settings migration", () => {
