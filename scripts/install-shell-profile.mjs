@@ -21,10 +21,10 @@ import {
   removeMcpEnvMarkerBlock,
   extractMcpEnvMarkerBlock,
   isCliAvailable,
+  mcpEnvInstanceId,
   readBearerKeysFromMcp,
   readBearerKeysFromPathsFile,
   resolvePwshProfilePath,
-  MCP_ENV_MARKER_START,
 } from "./lib.mjs";
 
 const PATHS_FILE = join(REPO_DIR, "scripts", ".mcp-env.paths");
@@ -119,9 +119,9 @@ function writeProfile(path, content) {
   writeFileSync(path, content);
 }
 
-function renderDiff(before, after, label) {
-  const beforeBlock = extractMcpEnvMarkerBlock(before);
-  const afterBlock = extractMcpEnvMarkerBlock(after);
+function renderDiff(before, after, label, id) {
+  const beforeBlock = extractMcpEnvMarkerBlock(before, id);
+  const afterBlock = extractMcpEnvMarkerBlock(after, id);
   if (beforeBlock === afterBlock) {
     console.log(`  (no changes) ${label}`);
     return;
@@ -137,8 +137,8 @@ async function confirmApply(changes) {
     console.log("Nothing to change.");
     return false;
   }
-  for (const { label, before, after } of changes) {
-    renderDiff(before, after, label);
+  for (const { label, before, after, id } of changes) {
+    renderDiff(before, after, label, id);
   }
   if (!input.isTTY) {
     console.error("\nNon-interactive shell: re-run with --yes to apply.");
@@ -210,23 +210,23 @@ async function main() {
 
   const cleanupKeys = opts.uninstall ? bearerKeysForCleanup() : keys;
   const nodeBin = opts.uninstall ? null : resolveNodeBin();
+  const instanceId = mcpEnvInstanceId({ repoDir: REPO_DIR, create: !opts.uninstall });
 
   const targets = profileTargets(opts.shell);
   const changes = [];
 
   for (const [shell, profilePath] of targets) {
     const before = readProfile(profilePath);
+    const scriptPath = shell === "pwsh" ? ENV_PS1 : ENV_SH;
+    const block = buildMcpEnvMarkerBlock({ shell, envScriptPath: scriptPath, id: instanceId });
     let after;
     if (opts.uninstall) {
-      after = removeMcpEnvMarkerBlock(before);
-      if (after === before) continue;
+      after = removeMcpEnvMarkerBlock(before, { id: instanceId, block });
     } else {
-      const scriptPath = shell === "pwsh" ? ENV_PS1 : ENV_SH;
-      const block = buildMcpEnvMarkerBlock({ shell, envScriptPath: scriptPath });
-      after = upsertMcpEnvMarkerBlock(before, block);
-      if (after === before && before.includes(MCP_ENV_MARKER_START)) continue;
+      after = upsertMcpEnvMarkerBlock(before, { id: instanceId, block });
     }
-    changes.push({ shell, profilePath, label: profilePath, before, after });
+    if (after === before) continue;
+    changes.push({ shell, profilePath, label: profilePath, before, after, id: instanceId });
   }
 
   if (changes.length === 0) {

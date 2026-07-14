@@ -13,6 +13,7 @@ import { join, resolve, relative, dirname, isAbsolute, sep, basename } from "nod
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
 import { platform, homedir } from "node:os";
+import { randomBytes } from "node:crypto";
 
 // ── Paths ───────────────────────────────────────────────────────────────
 
@@ -710,8 +711,42 @@ export function resolvePwshProfilePath(
   return join(home, ".config", "powershell", "Microsoft.PowerShell_profile.ps1");
 }
 
-export const MCP_ENV_MARKER_START = "# >>> aiworkspace-mcp-env >>>";
-export const MCP_ENV_MARKER_END = "# <<< aiworkspace-mcp-env <<<";
+const MCP_ENV_MARKER_NAME = "aiworkspace-mcp-env";
+
+// Legacy (pre-fix) literal markers — a single global block, no per-clone id.
+// Kept so we can still recognize and migrate blocks written before this fix.
+export const MCP_ENV_MARKER_START = `# >>> ${MCP_ENV_MARKER_NAME} >>>`;
+export const MCP_ENV_MARKER_END = `# <<< ${MCP_ENV_MARKER_NAME} <<<`;
+
+/** Namespaced marker for a clone id; falls back to the legacy literal when id is null. */
+export function mcpEnvMarkerStart(id) {
+  return id ? `# >>> ${MCP_ENV_MARKER_NAME}:${id} >>>` : MCP_ENV_MARKER_START;
+}
+export function mcpEnvMarkerEnd(id) {
+  return id ? `# <<< ${MCP_ENV_MARKER_NAME}:${id} <<<` : MCP_ENV_MARKER_END;
+}
+
+// Must match the id charset findMcpEnvMarkerSpans() recognizes in a marker line —
+// an id outside this set would get embedded in a block that can never be found again.
+const VALID_INSTANCE_ID_RE = /^[A-Za-z0-9]+$/;
+
+/**
+ * Stable per-clone id so multiple aiworkspace clones on one machine each get
+ * their own shell-profile block instead of clobbering one another's. Stored in
+ * local/ rather than scripts/ because `npm run upgrade` swaps scripts/ wholesale.
+ */
+export function mcpEnvInstanceId({ repoDir = REPO_DIR, create = true } = {}) {
+  const idFile = join(repoDir, "local", ".mcp-env.id");
+  if (existsSync(idFile)) {
+    const existing = readFileSync(idFile, "utf8").trim();
+    if (existing && VALID_INSTANCE_ID_RE.test(existing)) return existing;
+  }
+  if (!create) return null;
+  const id = randomBytes(4).toString("hex");
+  ensureDir(join(repoDir, "local"));
+  writeFileSync(idFile, `${id}\n`);
+  return id;
+}
 
 function envScriptScriptsDir(envScriptPath) {
   if (isWindowsAbsolutePath(envScriptPath)) {
@@ -722,36 +757,38 @@ function envScriptScriptsDir(envScriptPath) {
   return resolve(dirname(envScriptPath));
 }
 
-export function buildMcpEnvMarkerBlock({ shell, envScriptPath, home = homedir() }) {
+export function buildMcpEnvMarkerBlock({ shell, envScriptPath, home = homedir(), id = null }) {
   const scriptsDir = envScriptScriptsDir(envScriptPath);
+  const startMarker = mcpEnvMarkerStart(id);
+  const endMarker = mcpEnvMarkerEnd(id);
   if (shell === "pwsh") {
     if (isUnderHome(scriptsDir, home)) {
       const dirQ = pwshHomePrefixedPath(scriptsDir, home);
       return [
-        MCP_ENV_MARKER_START,
+        startMarker,
         "# MCP Bearer tokens for Cursor. Managed by: npm run mcp:install-shell",
         `$d = ${dirQ}`,
         `if (Test-Path -LiteralPath "$d\\workspace-env.ps1") { . "$d\\workspace-env.ps1" }`,
-        MCP_ENV_MARKER_END,
+        endMarker,
       ].join("\n");
     }
     const scriptQ = pwshQuotedPath(envScriptPath);
     return [
-      MCP_ENV_MARKER_START,
+      startMarker,
       "# MCP Bearer tokens for Cursor. Managed by: npm run mcp:install-shell",
       `if (Test-Path -LiteralPath ${scriptQ}) { . ${scriptQ} }`,
-      MCP_ENV_MARKER_END,
+      endMarker,
     ].join("\n");
   }
   if (isUnderHome(scriptsDir, home)) {
     const dirQ = homePrefixedShellPath(scriptsDir, home);
     return [
-      MCP_ENV_MARKER_START,
+      startMarker,
       "# MCP Bearer tokens for Cursor. Managed by: npm run mcp:install-shell",
       `__aiworkspace_mcp_env() { _d=${dirQ}; [ -f "$_d/workspace-env.sh" ] && . "$_d/workspace-env.sh" "$_d"; }`,
       "__aiworkspace_mcp_env",
       "unset -f __aiworkspace_mcp_env >/dev/null 2>&1 || true",
-      MCP_ENV_MARKER_END,
+      endMarker,
     ].join("\n");
   }
   const scriptQ = shellQuotedPath(
@@ -759,21 +796,29 @@ export function buildMcpEnvMarkerBlock({ shell, envScriptPath, home = homedir() 
   );
   const dirQ = shellQuotedPath(scriptsDir);
   return [
-    MCP_ENV_MARKER_START,
+    startMarker,
     "# MCP Bearer tokens for Cursor. Managed by: npm run mcp:install-shell",
     `__aiworkspace_mcp_env() { [ -f ${scriptQ} ] && . ${scriptQ} ${dirQ}; }`,
     "__aiworkspace_mcp_env",
     "unset -f __aiworkspace_mcp_env >/dev/null 2>&1 || true",
-    MCP_ENV_MARKER_END,
+    endMarker,
   ].join("\n");
 }
 
-function findMcpEnvMarkerSpan(content) {
-  const start = content.indexOf(MCP_ENV_MARKER_START);
-  if (start === -1) return null;
-  const end = content.indexOf(MCP_ENV_MARKER_END, start);
-  if (end === -1) return null;
-  return { start, end };
+/** All managed marker spans in document order: { start, end, id } (id null = legacy/pre-fix block). */
+export function findMcpEnvMarkerSpans(content) {
+  const startRe = new RegExp(`# >>> ${MCP_ENV_MARKER_NAME}(?::([A-Za-z0-9]+))? >>>`, "g");
+  const spans = [];
+  let match;
+  while ((match = startRe.exec(content))) {
+    const id = match[1] ?? null;
+    const endMarker = mcpEnvMarkerEnd(id);
+    const end = content.indexOf(endMarker, match.index);
+    if (end === -1) continue;
+    spans.push({ start: match.index, end, id });
+    startRe.lastIndex = end + endMarker.length;
+  }
+  return spans;
 }
 
 function profileEol(content) {
@@ -788,16 +833,45 @@ function fromLf(content, eol) {
   return eol === "\r\n" ? content.replace(/\n/g, "\r\n") : content;
 }
 
-export function upsertMcpEnvMarkerBlock(content, block) {
+/** Body lines between the start/end marker lines — identical regardless of id/legacy naming. */
+function markerBody(blockText) {
+  const lines = toLf(blockText).split("\n");
+  return lines.slice(1, -1).join("\n");
+}
+
+/**
+ * The span that belongs to this clone: an exact id match, else a body match —
+ * i.e. unmistakably this same clone's own install, safe to migrate/update in
+ * place. Legacy (id-less) body matches are preferred first (the common
+ * single-workspace migration case); falling back to a body match under *any*
+ * other id covers a clone whose local/.mcp-env.id was lost or regenerated
+ * (e.g. deleted manually), so it re-adopts its own still-namespaced block
+ * instead of leaving it orphaned and appending a duplicate. A block belonging
+ * to some other clone (different body) won't match either way and is left
+ * untouched.
+ */
+function findOwnMcpEnvSpan(spans, normalizedContent, id, block) {
+  if (id) {
+    const exact = spans.find((s) => s.id === id);
+    if (exact) return exact;
+  }
+  const targetBody = markerBody(block);
+  const bodyMatches = (s) =>
+    markerBody(normalizedContent.slice(s.start, s.end + mcpEnvMarkerEnd(s.id).length)) === targetBody;
+  return spans.find((s) => s.id === null && bodyMatches(s)) ?? spans.find(bodyMatches);
+}
+
+export function upsertMcpEnvMarkerBlock(content, { id = null, block }) {
   const eol = profileEol(content);
   const normalized = toLf(content);
   const normalizedBlock = toLf(block);
-  const span = findMcpEnvMarkerSpan(normalized);
+  const spans = findMcpEnvMarkerSpans(normalized);
+  const span = findOwnMcpEnvSpan(spans, normalized, id, normalizedBlock);
   let result;
   if (span) {
-    const { start, end } = span;
-    const before = normalized.slice(0, start).replace(/\n?$/, "\n");
-    const after = normalized.slice(end + MCP_ENV_MARKER_END.length).replace(/^\n?/, "\n");
+    const endLen = mcpEnvMarkerEnd(span.id).length;
+    const before = normalized.slice(0, span.start).replace(/\n?$/, "\n");
+    const after = normalized.slice(span.end + endLen).replace(/^\n?/, "\n");
     result = `${before}${normalizedBlock}\n${after}`.replace(/\n$/, "") + "\n";
   } else {
     const trimmed = normalized.replace(/\n?$/, "");
@@ -814,20 +888,22 @@ export function isCliAvailable(command, spawnFn = spawnSync) {
   return probe.status === 0 && Boolean(probe.stdout?.trim());
 }
 
-export function extractMcpEnvMarkerBlock(content) {
-  const span = findMcpEnvMarkerSpan(content);
+export function extractMcpEnvMarkerBlock(content, id = null) {
+  const spans = findMcpEnvMarkerSpans(content);
+  const span = spans.find((s) => s.id === id);
   if (!span) return "(no managed block)";
-  return content.slice(span.start, span.end + MCP_ENV_MARKER_END.length);
+  return content.slice(span.start, span.end + mcpEnvMarkerEnd(span.id).length);
 }
 
-export function removeMcpEnvMarkerBlock(content) {
+export function removeMcpEnvMarkerBlock(content, { id = null, block = "" } = {}) {
   const eol = profileEol(content);
   const normalized = toLf(content);
-  const span = findMcpEnvMarkerSpan(normalized);
+  const spans = findMcpEnvMarkerSpans(normalized);
+  const span = findOwnMcpEnvSpan(spans, normalized, id, toLf(block));
   if (!span) return content;
-  const { start, end } = span;
-  const before = normalized.slice(0, start).replace(/\n$/, "");
-  const after = normalized.slice(end + MCP_ENV_MARKER_END.length).replace(/^\n/, "");
+  const endLen = mcpEnvMarkerEnd(span.id).length;
+  const before = normalized.slice(0, span.start).replace(/\n$/, "");
+  const after = normalized.slice(span.end + endLen).replace(/^\n/, "");
   let result;
   if (before && after) result = `${before}\n${after}\n`;
   else if (before) result = `${before}\n`;

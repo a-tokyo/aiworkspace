@@ -21,6 +21,11 @@ These scripts are managed by [aiworkspace](https://github.com/a-tokyo/aiworkspac
 | `skills/remove-skill.mjs` | Wrapper around `skills remove` with cleanup |
 | `skills/create-skill.mjs` | Scaffolds a new manual skill directory |
 
+`install-shell-profile.mjs` keeps two local, gitignored files: `scripts/.mcp-env.paths` (cached node
+binary path + Bearer key names) and `local/.mcp-env.id` (a per-clone id so multiple aiworkspace clones
+on one machine each get their own shell-profile block). `.mcp-env.id` lives in `local/`, not `scripts/`,
+because `npm run upgrade` replaces `scripts/` wholesale.
+
 ## Upgrading and syncing
 
 **Template upgrade** — when a new aiworkspace release is published:
