@@ -32,7 +32,7 @@ import {
   MIRROR_SKIP, SKILL_LINK_DIRS, PROJECT_SKILL_SUBDIRS,
   isSymlink, isRealDir, isFile, ensureDir, removeIfEmpty,
   safeSymlink, gitTrackedChildren, getSkillNames, cleanCliArtifacts,
-  validateLockFile,
+  validateLockFile, prepareMirroredSettingsMigration,
 } from "../lib.mjs";
 
 const args = process.argv.slice(2);
@@ -40,6 +40,30 @@ const isEnsure = args.includes("--ensure");
 const isClean = args.includes("--clean");
 
 function log(msg) { if (!isEnsure) console.log(msg); }
+
+function migrateLocalCopyBeforeSymlink(canonicalPath, localPath, fileName) {
+  const result = prepareMirroredSettingsMigration(canonicalPath, localPath, fileName);
+  const relLocal = relative(WORKSPACE, localPath);
+  const relCanonical = relative(WORKSPACE, canonicalPath);
+
+  switch (result.action) {
+    case "seeded":
+      log(`  ↻ ${relLocal} (seeded canonical from local)`);
+      console.warn(`  ℹ Seeded ${relCanonical} from existing local file — review and commit if team-wide`);
+      return true;
+    case "backed-up":
+      log(`  ↻ ${relLocal} (backed up → ${relative(WORKSPACE, result.backupPath)})`);
+      console.warn(`  ⚠ Local ${fileName} differed from team canonical — backup at ${relative(WORKSPACE, result.backupPath)}`);
+      return true;
+    case "removed-identical":
+      log(`  ↻ ${relLocal} (migrated copy → symlink)`);
+      return true;
+    case "skipped":
+      return false;
+    default:
+      return false;
+  }
+}
 
 // ── Mirror root-config → parent root ────────────────────────────────────
 
@@ -58,27 +82,31 @@ function mirrorRootConfig() {
     if (entry.isFile()) {
       const relTarget = relative(dirname(dest), src);
       if (isFile(dest)) {
-        const canonical = readFileSync(src, "utf8");
-        const local = readFileSync(dest, "utf8");
-        if (canonical !== local) {
-          console.warn(`  ⚠ ${entry.name} has local edits that will be replaced by symlink to canonical`);
+        if (!migrateLocalCopyBeforeSymlink(src, dest, entry.name)) {
+          const canonical = readFileSync(src, "utf8");
+          const local = readFileSync(dest, "utf8");
+          if (canonical !== local) {
+            console.warn(`  ⚠ ${entry.name} has local edits that will be replaced by symlink to canonical`);
+          }
+          unlinkSync(dest);
+          log(`  ↻ ${entry.name} (migrated copy → symlink)`);
         }
-        unlinkSync(dest);
-        log(`  ↻ ${entry.name} (migrated copy → symlink)`);
       }
       safeSymlink(relTarget, dest, { quiet: isEnsure });
     } else if (entry.isSymbolicLink()) {
       const target = readlinkSync(src);
       if (isFile(dest)) {
-        try {
-          const canonical = readFileSync(join(dirname(src), target), "utf8");
-          const local = readFileSync(dest, "utf8");
-          if (canonical !== local) {
-            console.warn(`  ⚠ ${entry.name} has local edits that will be replaced by symlink to canonical`);
-          }
-        } catch { /* ignore */ }
-        unlinkSync(dest);
-        log(`  ↻ ${entry.name} (migrated copy → symlink)`);
+        if (!migrateLocalCopyBeforeSymlink(join(dirname(src), target), dest, entry.name)) {
+          try {
+            const canonical = readFileSync(join(dirname(src), target), "utf8");
+            const local = readFileSync(dest, "utf8");
+            if (canonical !== local) {
+              console.warn(`  ⚠ ${entry.name} has local edits that will be replaced by symlink to canonical`);
+            }
+          } catch { /* ignore */ }
+          unlinkSync(dest);
+          log(`  ↻ ${entry.name} (migrated copy → symlink)`);
+        }
       }
       safeSymlink(target, dest, { quiet: isEnsure });
     } else if (entry.isDirectory()) {
@@ -110,7 +138,9 @@ function mirrorL2(srcDir, destDir) {
         console.warn(`  ⚠ ${relative(WORKSPACE, destItem)} exists — resolve manually or remove it`);
         continue;
       }
-      unlinkSync(destItem);
+      if (!migrateLocalCopyBeforeSymlink(join(srcDir, entry.name), destItem, entry.name)) {
+        unlinkSync(destItem);
+      }
     }
 
     safeSymlink(relTarget, destItem, { quiet: isEnsure });

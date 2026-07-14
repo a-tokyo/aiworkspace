@@ -117,6 +117,12 @@ Only `[mcp_servers.*]` tables in `.codex/config.toml` are regenerated; other Cod
 
 **Team vs personal:** `settings.json` is shared and symlinked on `npm run sync`. Teams add plugin defaults and other workspace-scoped Cursor settings there (e.g. `"plugins": { "cursor-team-kit": { "enabled": true } }`). Personal editor preferences and MCP enable/disable stay in Cursor User settings (`~/Library/Application Support/Cursor/User/settings.json` on macOS) and Settings → MCP — not mirrored.
 
+**Migrating an existing local file:** If you already have a copy at the parent root (not a symlink), the first sync:
+
+- **Seeds** team canonical from your local file when canonical is still `{}` and your local file has content — review and commit if the team should share it.
+- **Backs up** to `settings.json.bak` when local content differs from team canonical — merge anything you still need, then delete the backup.
+- **Replaces** with a symlink to canonical either way.
+
 ### `.claude/` (Claude Code)
 
 | Path | Purpose |
