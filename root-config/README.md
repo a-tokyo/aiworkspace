@@ -53,6 +53,19 @@ Everyone shares **MCP definitions** (`.agents/mcp.json`) and **agent instruction
 
 **Do not hand-edit** Codex `[mcp_servers.*]` blocks or VS Code `mcp.json` — edit `.agents/mcp.json` and run `npm run sync`.
 
+### Migrating mirrored `settings.json`
+
+Applies to **`.cursor/settings.json`** and **`.claude/settings.json`** when a parent-root copy (not a symlink) is replaced on sync:
+
+| Situation | Result |
+|-----------|--------|
+| Team canonical is `{}` and local has content | **Seed** — local content is written to team canonical; review and commit if team-wide |
+| Team canonical has content and local differs | **Backup** — local renamed to `settings.json.bak` (or `.bak.1`, …); merge anything you still need |
+| Local matches canonical | Local removed; symlink created |
+| Already a symlink to canonical | Unchanged |
+
+Seeding is common for new Cursor workspaces (empty `{}` baseline). Claude Code ships team permissions in canonical, so existing local copies usually hit the **backup** path instead.
+
 ## Supported Conventions
 
 Add files and directories as needed — the mirror picks them up automatically.
@@ -117,11 +130,7 @@ Only `[mcp_servers.*]` tables in `.codex/config.toml` are regenerated; other Cod
 
 **Team vs personal:** `settings.json` is shared and symlinked on `npm run sync`. Teams add plugin defaults and other workspace-scoped Cursor settings there (e.g. `"plugins": { "cursor-team-kit": { "enabled": true } }`). Personal editor preferences and MCP enable/disable stay in Cursor User settings (`~/Library/Application Support/Cursor/User/settings.json` on macOS) and Settings → MCP — not mirrored.
 
-**Migrating an existing local file:** If you already have a copy at the parent root (not a symlink), the first sync:
-
-- **Seeds** team canonical from your local file when canonical is still `{}` and your local file has content — review and commit if the team should share it.
-- **Backs up** to `settings.json.bak` when local content differs from team canonical — merge anything you still need, then delete the backup.
-- **Replaces** with a symlink to canonical either way.
+See [Migrating mirrored `settings.json`](#migrating-mirrored-settingsjson) when upgrading from a local copy at the parent root.
 
 ### `.claude/` (Claude Code)
 
@@ -140,6 +149,8 @@ cp <workspace-repo>/root-config/.claude/settings.local.json.example .claude/sett
 ```
 
 Remove MCP names you do not use. Sync never overwrites an existing `settings.local.json`.
+
+See [Migrating mirrored `settings.json`](#migrating-mirrored-settingsjson) when upgrading from a local copy at the parent root.
 
 ### `.vscode/` (VS Code + Copilot)
 

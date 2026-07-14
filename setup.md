@@ -210,6 +210,14 @@ cp <workspace-repo>/root-config/.claude/settings.local.json.example .claude/sett
 
 Edit locally — remove servers you do not use. MCP **definitions** stay in `.agents/mcp.json`; `enabledMcpjsonServers` only controls which servers Claude Code activates for you.
 
+If you already have a local copy at the parent root, the first sync backs it up when it differs from team canonical — see [root-config/README.md — Migrating mirrored settings.json](root-config/README.md#migrating-mirrored-settingsjson).
+
+### Cursor (one-time)
+
+`npm install` mirrors team `.cursor/settings.json` to the parent root. Personal editor preferences and MCP enable/disable stay in Cursor User settings and Settings → MCP.
+
+If you already have a local copy at the parent root, the first sync seeds or backs it up — see [root-config/README.md — Migrating mirrored settings.json](root-config/README.md#migrating-mirrored-settingsjson).
+
 ### Team vs personal by editor
 
 | Tool | Team (mirrored on sync) | Personal (never mirrored) |

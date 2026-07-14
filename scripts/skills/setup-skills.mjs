@@ -13,6 +13,7 @@
  *   L1 files     → symlink to parent root
  *   L1 symlinks  → symlink at parent root (same relative target)
  *   L1 dirs      → create real dir at parent root, symlink each L2 item
+ *   settings.json → seed empty canonical from local, or backup conflicts to .bak
  *
  * Per-skill symlinks:
  *   .claude/skills/{name} → canonical  (Claude Code)
