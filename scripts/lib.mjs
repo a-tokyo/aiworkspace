@@ -726,6 +726,10 @@ export function mcpEnvMarkerEnd(id) {
   return id ? `# <<< ${MCP_ENV_MARKER_NAME}:${id} <<<` : MCP_ENV_MARKER_END;
 }
 
+// Must match the id charset findMcpEnvMarkerSpans() recognizes in a marker line —
+// an id outside this set would get embedded in a block that can never be found again.
+const VALID_INSTANCE_ID_RE = /^[A-Za-z0-9]+$/;
+
 /**
  * Stable per-clone id so multiple aiworkspace clones on one machine each get
  * their own shell-profile block instead of clobbering one another's. Stored in
@@ -735,7 +739,7 @@ export function mcpEnvInstanceId({ repoDir = REPO_DIR, create = true } = {}) {
   const idFile = join(repoDir, "local", ".mcp-env.id");
   if (existsSync(idFile)) {
     const existing = readFileSync(idFile, "utf8").trim();
-    if (existing) return existing;
+    if (existing && VALID_INSTANCE_ID_RE.test(existing)) return existing;
   }
   if (!create) return null;
   const id = randomBytes(4).toString("hex");
@@ -836,11 +840,15 @@ function markerBody(blockText) {
 }
 
 /**
- * The span that belongs to this clone: an exact id match, else a legacy
- * (id-less) block whose body is byte-identical to `block`'s — i.e. unmistakably
- * this same clone's own pre-fix install, safe to migrate in place. A legacy
- * block belonging to some other, not-yet-upgraded clone won't match and is
- * left untouched.
+ * The span that belongs to this clone: an exact id match, else a body match —
+ * i.e. unmistakably this same clone's own install, safe to migrate/update in
+ * place. Legacy (id-less) body matches are preferred first (the common
+ * single-workspace migration case); falling back to a body match under *any*
+ * other id covers a clone whose local/.mcp-env.id was lost or regenerated
+ * (e.g. deleted manually), so it re-adopts its own still-namespaced block
+ * instead of leaving it orphaned and appending a duplicate. A block belonging
+ * to some other clone (different body) won't match either way and is left
+ * untouched.
  */
 function findOwnMcpEnvSpan(spans, normalizedContent, id, block) {
   if (id) {
@@ -848,11 +856,9 @@ function findOwnMcpEnvSpan(spans, normalizedContent, id, block) {
     if (exact) return exact;
   }
   const targetBody = markerBody(block);
-  return spans.find((s) => {
-    if (s.id !== null) return false;
-    const endMarker = mcpEnvMarkerEnd(null);
-    return markerBody(normalizedContent.slice(s.start, s.end + endMarker.length)) === targetBody;
-  });
+  const bodyMatches = (s) =>
+    markerBody(normalizedContent.slice(s.start, s.end + mcpEnvMarkerEnd(s.id).length)) === targetBody;
+  return spans.find((s) => s.id === null && bodyMatches(s)) ?? spans.find(bodyMatches);
 }
 
 export function upsertMcpEnvMarkerBlock(content, { id = null, block }) {

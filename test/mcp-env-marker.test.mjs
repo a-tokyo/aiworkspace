@@ -191,6 +191,32 @@ describe("mcp env marker blocks", () => {
     assert.match(after, /\/tmp\/ws\/scripts\/workspace-env\.sh/);
   });
 
+  it("re-adopts this clone's own block under a new id when the old id no longer matches (e.g. local/.mcp-env.id was lost)", () => {
+    const oldId = "aaaa1111";
+    const staleBlock = buildMcpEnvMarkerBlock({ shell: "zsh", envScriptPath: "/tmp/ws/scripts/workspace-env.sh", id: oldId });
+    const withStale = upsertMcpEnvMarkerBlock("# custom\n", { id: oldId, block: staleBlock });
+
+    const newId = "bbbb2222";
+    const freshBlock = buildMcpEnvMarkerBlock({ shell: "zsh", envScriptPath: "/tmp/ws/scripts/workspace-env.sh", id: newId });
+    const after = upsertMcpEnvMarkerBlock(withStale, { id: newId, block: freshBlock });
+
+    assert.doesNotMatch(after, /aiworkspace-mcp-env:aaaa1111/);
+    assert.equal(after.match(/# >>> aiworkspace-mcp-env/g)?.length, 1);
+    assert.match(after, /aiworkspace-mcp-env:bbbb2222/);
+  });
+
+  it("removeMcpEnvMarkerBlock also re-adopts a stale-id block by body match", () => {
+    const oldId = "aaaa1111";
+    const staleBlock = buildMcpEnvMarkerBlock({ shell: "zsh", envScriptPath: "/tmp/ws/scripts/workspace-env.sh", id: oldId });
+    const withStale = upsertMcpEnvMarkerBlock("# custom\n", { id: oldId, block: staleBlock });
+
+    const newId = "bbbb2222";
+    const freshBlock = buildMcpEnvMarkerBlock({ shell: "zsh", envScriptPath: "/tmp/ws/scripts/workspace-env.sh", id: newId });
+    const after = removeMcpEnvMarkerBlock(withStale, { id: newId, block: freshBlock });
+    assert.doesNotMatch(after, /aiworkspace-mcp-env/);
+    assert.match(after, /# custom/);
+  });
+
   it("removes only marked region", () => {
     const content = upsertMcpEnvMarkerBlock("before\n", { block });
     const stripped = removeMcpEnvMarkerBlock(content, { block });
@@ -290,5 +316,21 @@ describe("mcpEnvInstanceId", () => {
     mkdirSync(join(tmp.dir, "local"), { recursive: true });
     writeFileSync(join(tmp.dir, "local", ".mcp-env.id"), "deadbeef\n");
     assert.equal(mcpEnvInstanceId({ repoDir: tmp.dir, create: false }), "deadbeef");
+  });
+
+  it("ignores a corrupted id file and mints a fresh valid one", () => {
+    tmp = makeTmpDir();
+    mkdirSync(join(tmp.dir, "local"), { recursive: true });
+    writeFileSync(join(tmp.dir, "local", ".mcp-env.id"), "not a valid id!!\n");
+    const id = mcpEnvInstanceId({ repoDir: tmp.dir });
+    assert.match(id, /^[0-9a-f]{8}$/);
+    assert.equal(readFileSync(join(tmp.dir, "local", ".mcp-env.id"), "utf8").trim(), id);
+  });
+
+  it("with create:false, returns null for a corrupted id file rather than the raw value", () => {
+    tmp = makeTmpDir();
+    mkdirSync(join(tmp.dir, "local"), { recursive: true });
+    writeFileSync(join(tmp.dir, "local", ".mcp-env.id"), "not a valid id!!\n");
+    assert.equal(mcpEnvInstanceId({ repoDir: tmp.dir, create: false }), null);
   });
 });
