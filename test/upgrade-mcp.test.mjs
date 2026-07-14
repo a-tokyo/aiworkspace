@@ -160,16 +160,20 @@ describe("upgradeMcp", () => {
     assert.equal(merged.mcpServers.also_broken, undefined);
   });
 
-  it("refreshes bundled template servers and keeps user-only servers", () => {
+  it("keeps existing context7 and preserves user-only servers", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
     const canonical = join(ws, "root-config", ".agents", "mcp.json");
     mkdirSync(dirname(canonical), { recursive: true });
+    const customContext7 = {
+      type: "http",
+      url: "https://mcp.context7.com/mcp",
+    };
     writeFileSync(
       canonical,
       JSON.stringify({
         mcpServers: {
-          context7: { type: "stdio", command: "node", args: ["stale-context7.js"] },
+          context7: customContext7,
           personal: { type: "stdio", command: "npx", args: ["-y", "personal-mcp"] },
         },
       }, null, 2) + "\n",
@@ -177,8 +181,7 @@ describe("upgradeMcp", () => {
 
     upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
     const merged = JSON.parse(readFileSync(canonical, "utf8"));
-    assert.equal(merged.mcpServers.context7.command, "npx");
-    assert.deepEqual(merged.mcpServers.context7.args, ["-y", "@upstash/context7-mcp"]);
+    assert.deepEqual(merged.mcpServers.context7, customContext7);
     assert.ok(merged.mcpServers.personal);
   });
 
@@ -544,20 +547,21 @@ describe("upgradeMcp", () => {
     assert.ok(codex.includes("[mcp_servers.api]"));
     assert.ok(codex.includes('command = "node"'));
     assert.ok(codex.includes("mcp-load-env.mjs"));
-    assert.ok(codex.includes("[mcp_servers.context7]"), "stdio template server still emitted");
+    assert.ok(codex.includes("[mcp_servers.context7]"), "template http server still emitted");
 
     const vscode = JSON.parse(readFileSync(join(ws, "root-config", ".vscode", "mcp.json"), "utf8"));
     assert.equal(vscode.servers.api.envFile, "${workspaceFolder}/.env.local");
   });
 
-  it("context7 stays unwrapped when no secrets", () => {
+  it("context7 ships as http oauth without env wrapper", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
     upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
     const ctx = JSON.parse(readFileSync(join(ws, "root-config", ".agents", "mcp.json"), "utf8"))
       .mcpServers.context7;
-    assert.equal(ctx.command, "npx");
-    assert.ok(!ctx.args?.some((a) => String(a).includes("mcp-load-env")));
+    assert.equal(ctx.type, "http");
+    assert.equal(ctx.url, "https://mcp.context7.com/mcp/oauth");
+    assert.equal(ctx.command, undefined);
   });
 
   it("wrapStdioWithEnvLoader strips all placeholder env vars", () => {
@@ -674,12 +678,12 @@ describe("upgradeMcp", () => {
     assert.ok(flagIdx !== -1 && flagIdx < tableIdx, "flag must precede the first preamble table");
   });
 
-  it("codex does not add rmcp flag when there are no HTTP servers", () => {
+  it("codex adds rmcp flag when bundled context7 is http", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
     upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
     const codex = readFileSync(join(ws, "root-config", ".codex", "config.toml"), "utf8");
-    assert.ok(!codex.includes("experimental_use_rmcp_client"), "no rmcp flag without HTTP servers");
+    assert.ok(codex.includes("experimental_use_rmcp_client"), "rmcp flag required for bundled http context7");
   });
 
   it("mcpLoadEnvRel derives path from repo directory name", () => {

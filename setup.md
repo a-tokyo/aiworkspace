@@ -52,13 +52,13 @@ gh auth status    # verify
 
 The workspace ships configs for **all major tools** — Cursor, Claude Code, Codex, and VS Code. Every developer gets all of them; there is no per-tool opt-out. Unused symlinks are harmless. `npm install` and git hooks will recreate parent-root tool dirs if removed.
 
-The workspace ships with **context7** — up-to-date library and framework documentation.
+The workspace ships with **context7** — up-to-date library and framework documentation (HTTP OAuth — sign in via Settings → MCP).
 
 After install:
 
 1. Open `~/dev/<your-org>/` in Cursor (or your AI editor)
 2. Restart the editor if MCP servers don't appear immediately
-3. Approve context7 on first use when prompted
+3. For context7: Settings → MCP → Authenticate (OAuth)
 
 Configs are symlinked from `root-config/`:
 
@@ -280,7 +280,7 @@ If you have no `aiworkspace` devDependency (older layout), upgrade uses `git fet
 
 | Problem | Fix |
 |---------|-----|
-| context7 MCP not working | Ensure `npx` is available (`node -v`), restart Cursor, check MCP server status in Settings |
+| context7 MCP not working | Complete OAuth in Settings → MCP, restart Cursor |
 | MCP configs missing at parent root | `cd workspace && npm run sync` (or `npm run skills:setup`), verify `ls -la ../.agents/mcp.json` |
 | Skills not showing up | `cd workspace && npm run skills:setup`, verify `ls root-config/.agents/skills/` |
 | MCP server red/error | Click server name in Cursor Settings -> MCP for details, restart Cursor |
