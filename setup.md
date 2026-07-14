@@ -88,6 +88,8 @@ Then **restart your editor** (MCP reads config at startup).
 
 `.env.local` is gitignored. `.env.example` lives in `root-config/` and is symlinked to the parent root. OAuth HTTP servers (e.g. Slack) use the editor's sign-in flow — no `.env.local` entry needed.
 
+**Prefix secret keys when loading into a shell.** Bearer tokens for Cursor are often loaded via `mcp:install-shell` or a manual `source` of `.env.local` in `~/.zshrc` / `~/.bashrc`. Those variables then live in your login shell (and on macOS, may be pushed to `launchctl` for Dock-launched apps). Use a workspace-specific prefix in `.env.example` and matching `${env:VAR}` / `${VAR}` placeholders in `mcp.json` — for example `ACME_SONAR_TOKEN` rather than `SONAR_TOKEN` — to avoid clashing with other projects, CLI tools, or generic names. Keep the same names in `.env.local`, `mcp.json`, and `.env.example`.
+
 #### Stdio servers (automatic)
 
 `npm run sync` wraps secret-bearing **stdio** servers that use `${VAR}` placeholders with a built-in env loader (`mcp-load-env.mjs`). Those read `.env.local` directly — no shell profile changes, no direnv, no extra packages.
@@ -112,15 +114,39 @@ Use Cursor's `${env:NAME}` syntax in canonical `mcp.json` for HTTP headers (not 
 | **Codex** | `bearer_token_env_var` in `.codex/config.toml` — set the var in your shell |
 | **Cursor** | `${env:NAME}` reads from the **process environment at Cursor startup** — not from `envFile` (stdio only) |
 
-So for **Cursor**, load `.env.local` into the process environment before Cursor starts:
+So for **Cursor**, load Bearer tokens into the process environment before Cursor starts.
 
-**macOS / Linux (bash or zsh)** — add this **one-time** line to `~/.zshrc` or `~/.bashrc` (adjust the path to your parent workspace root):
+**Recommended (all platforms)** — from your workspace repo:
+
+```bash
+cd path/to/your-workspace-repo
+npm run mcp:install-shell
+```
+
+This appends a marked block to your shell profile (`~/.zshrc`, `~/.bashrc`, and/or PowerShell `$PROFILE`). On macOS it also runs `launchctl setenv` for Bearer keys so Dock-launched Cursor inherits them. Re-run after moving the repo or changing Bearer vars in `mcp.json`. Remove with `npm run mcp:uninstall-shell`.
+
+**Windows GUI apps:** add `--persist` to write User environment variables from `.env.local`:
+
+```bash
+npm run mcp:install-shell -- --persist
+```
+
+**Without a login profile** — vars stay in one terminal session only (Dock-launched Cursor won't see them):
+
+```bash
+cd ~/dev/<your-org>
+set -a && source .env.local && set +a && cursor .
+```
+
+`direnv` with `dotenv .env.local` works the same if you use it. Prefer OAuth MCP servers when you can; VS Code loads Bearer tokens from `.env.local` via `envFile` without a shell step.
+
+**Manual fallback (macOS / Linux)** — add to `~/.zshrc` or `~/.bashrc` (adjust the path to your parent workspace root):
 
 ```bash
 [ -f "$HOME/dev/<your-org>/.env.local" ] && set -a && source "$HOME/dev/<your-org>/.env.local" && set +a
 ```
 
-**Windows (PowerShell)** — add to your PowerShell profile, or run before starting Cursor:
+**Manual fallback (Windows PowerShell)** — add to your PowerShell profile, or run before starting Cursor:
 
 ```powershell
 $envFile = "$env:USERPROFILE\dev\<your-org>\.env.local"

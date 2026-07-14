@@ -12,7 +12,7 @@ import {
 import { join, resolve, relative, dirname, isAbsolute, sep, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
-import { platform } from "node:os";
+import { platform, homedir } from "node:os";
 
 // ── Paths ───────────────────────────────────────────────────────────────
 
@@ -30,6 +30,72 @@ export function shellQuotedPath(filePath) {
     .replace(/"/g, '\\"')
     .replace(/\$/g, "\\$")
     .replace(/`/g, "\\`")}"`;
+}
+
+function escapeShellPathSuffix(segment) {
+  return segment
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\$/g, "\\$")
+    .replace(/`/g, "\\`");
+}
+
+function isWindowsAbsolutePath(filePath) {
+  return /^[A-Za-z]:[\\/]/.test(filePath);
+}
+
+function normalizeWindowsPath(filePath) {
+  return filePath.replace(/\//g, "\\").replace(/\\+$/, "");
+}
+
+/** Relative path from home to file when both are Windows absolutes; null otherwise. */
+function windowsPathRelativeFromHome(filePath, home) {
+  if (!isWindowsAbsolutePath(filePath) || !isWindowsAbsolutePath(home)) return null;
+  const base = normalizeWindowsPath(home);
+  const target = normalizeWindowsPath(filePath);
+  const prefix = `${base}\\`;
+  if (!target.toLowerCase().startsWith(prefix.toLowerCase())) return null;
+  const rel = target.slice(prefix.length);
+  if (!rel || rel.split("\\").includes("..")) return null;
+  return rel;
+}
+
+/** True when filePath resolves under home (excludes paths that escape via ..). */
+export function isUnderHome(filePath, home = homedir()) {
+  const winRel = windowsPathRelativeFromHome(filePath, home);
+  if (winRel !== null) return true;
+  const resolved = resolve(filePath);
+  const resolvedHome = resolve(home);
+  const rel = relative(resolvedHome, resolved);
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+}
+
+/**
+ * Shell path under $HOME for profile blocks, e.g. "$HOME/dev/acme/workspace/scripts".
+ * Falls back to shellQuotedPath when not under home.
+ */
+export function homePrefixedShellPath(filePath, home = homedir()) {
+  const winRel = windowsPathRelativeFromHome(filePath, home);
+  if (winRel !== null) {
+    return `"$HOME/${escapeShellPathSuffix(winRel.split("\\").join("/"))}"`;
+  }
+  const resolved = resolve(filePath);
+  const resolvedHome = resolve(home);
+  if (!isUnderHome(resolved, resolvedHome)) return shellQuotedPath(resolved);
+  const rel = relative(resolvedHome, resolved).split(sep).join("/");
+  return `"$HOME/${escapeShellPathSuffix(rel)}"`;
+}
+
+function pwshHomePrefixedPath(filePath, userProfile = process.env.USERPROFILE ?? homedir()) {
+  const winRel = windowsPathRelativeFromHome(filePath, userProfile);
+  if (winRel !== null) {
+    return `"$env:USERPROFILE\\${winRel.replace(/'/g, "''")}"`;
+  }
+  const resolved = resolve(filePath);
+  const resolvedHome = resolve(userProfile);
+  if (!isUnderHome(resolved, resolvedHome)) return pwshQuotedPath(resolved);
+  const rel = relative(resolvedHome, resolved).split(sep).join("\\");
+  return `"$env:USERPROFILE\\${rel.replace(/'/g, "''")}"`;
 }
 
 /** Windows: `junction` for directories, `file` for files; undefined on Unix. */
@@ -574,6 +640,200 @@ export function httpBearerVarsForMcpServer(config) {
   if (typeof auth !== "string" || !/^Bearer\s/i.test(auth)) return vars;
   for (const m of auth.matchAll(/\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}/g)) vars.add(m[1]);
   return vars;
+}
+
+/** All Bearer header env vars across MCP servers (sorted array). */
+export function collectHttpBearerVars(mcpServers) {
+  const vars = new Set();
+  if (!mcpServers || typeof mcpServers !== "object") return [];
+  for (const config of Object.values(mcpServers)) {
+    for (const v of httpBearerVarsForMcpServer(config)) vars.add(v);
+  }
+  return [...vars].sort();
+}
+
+/** Bearer keys from canonical mcp.json (empty when missing or invalid). */
+export function readBearerKeysFromMcp() {
+  const path = join(ROOT_CONFIG, ".agents", "mcp.json");
+  if (!existsSync(path)) return [];
+  const parsed = readMcpJson(path);
+  if (!parsed) return [];
+  return collectHttpBearerVars(parsed.mcpServers);
+}
+
+/** Bearer keys cached in scripts/.mcp-env.paths at install time. */
+export function readBearerKeysFromPathsFile(pathsFile) {
+  if (!existsSync(pathsFile)) return [];
+  const content = readFileSync(pathsFile, "utf8");
+  const match = content.match(/^BEARER_KEYS=(.+)$/m);
+  if (!match) return [];
+  return match[1].split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+function pwshQuotedPath(filePath) {
+  return `'${filePath.replace(/'/g, "''")}'`;
+}
+
+/** PowerShell 7+ profile path on Windows. */
+export function defaultPwsh7Profile(home, userProfile = process.env.USERPROFILE) {
+  const docs = userProfile ?? home;
+  return join(docs, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1");
+}
+
+/** Windows PowerShell 5.1 profile path. */
+export function defaultWindowsPowerShell51Profile(home, userProfile = process.env.USERPROFILE) {
+  const docs = userProfile ?? home;
+  return join(docs, "Documents", "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1");
+}
+
+/**
+ * Pick the PowerShell profile path most likely to load on this machine.
+ * On Windows without pwsh, fall back to Windows PowerShell 5.1.
+ */
+export function resolvePwshProfilePath(
+  home,
+  {
+    platformName = platform(),
+    isCliAvailableFn = isCliAvailable,
+    existsSyncFn = existsSync,
+    override = process.env.AIWORKSPACE_PWSH_PROFILE,
+    userProfile = process.env.USERPROFILE,
+  } = {},
+) {
+  if (override) return override;
+  if (platformName === "win32") {
+    const pwsh7 = defaultPwsh7Profile(home, userProfile);
+    if (existsSyncFn(pwsh7) || isCliAvailableFn("pwsh")) return pwsh7;
+    if (isCliAvailableFn("powershell")) return defaultWindowsPowerShell51Profile(home, userProfile);
+    return pwsh7;
+  }
+  return join(home, ".config", "powershell", "Microsoft.PowerShell_profile.ps1");
+}
+
+export const MCP_ENV_MARKER_START = "# >>> aiworkspace-mcp-env >>>";
+export const MCP_ENV_MARKER_END = "# <<< aiworkspace-mcp-env <<<";
+
+function envScriptScriptsDir(envScriptPath) {
+  if (isWindowsAbsolutePath(envScriptPath)) {
+    const norm = normalizeWindowsPath(envScriptPath);
+    const idx = norm.lastIndexOf("\\");
+    return idx === -1 ? norm : norm.slice(0, idx);
+  }
+  return resolve(dirname(envScriptPath));
+}
+
+export function buildMcpEnvMarkerBlock({ shell, envScriptPath, home = homedir() }) {
+  const scriptsDir = envScriptScriptsDir(envScriptPath);
+  if (shell === "pwsh") {
+    if (isUnderHome(scriptsDir, home)) {
+      const dirQ = pwshHomePrefixedPath(scriptsDir, home);
+      return [
+        MCP_ENV_MARKER_START,
+        "# MCP Bearer tokens for Cursor. Managed by: npm run mcp:install-shell",
+        `$d = ${dirQ}`,
+        `if (Test-Path -LiteralPath "$d\\workspace-env.ps1") { . "$d\\workspace-env.ps1" }`,
+        MCP_ENV_MARKER_END,
+      ].join("\n");
+    }
+    const scriptQ = pwshQuotedPath(envScriptPath);
+    return [
+      MCP_ENV_MARKER_START,
+      "# MCP Bearer tokens for Cursor. Managed by: npm run mcp:install-shell",
+      `if (Test-Path -LiteralPath ${scriptQ}) { . ${scriptQ} }`,
+      MCP_ENV_MARKER_END,
+    ].join("\n");
+  }
+  if (isUnderHome(scriptsDir, home)) {
+    const dirQ = homePrefixedShellPath(scriptsDir, home);
+    return [
+      MCP_ENV_MARKER_START,
+      "# MCP Bearer tokens for Cursor. Managed by: npm run mcp:install-shell",
+      `__aiworkspace_mcp_env() { _d=${dirQ}; [ -f "$_d/workspace-env.sh" ] && . "$_d/workspace-env.sh" "$_d"; }`,
+      "__aiworkspace_mcp_env",
+      "unset -f __aiworkspace_mcp_env >/dev/null 2>&1 || true",
+      MCP_ENV_MARKER_END,
+    ].join("\n");
+  }
+  const scriptQ = shellQuotedPath(
+    isWindowsAbsolutePath(envScriptPath) ? normalizeWindowsPath(envScriptPath) : resolve(envScriptPath),
+  );
+  const dirQ = shellQuotedPath(scriptsDir);
+  return [
+    MCP_ENV_MARKER_START,
+    "# MCP Bearer tokens for Cursor. Managed by: npm run mcp:install-shell",
+    `__aiworkspace_mcp_env() { [ -f ${scriptQ} ] && . ${scriptQ} ${dirQ}; }`,
+    "__aiworkspace_mcp_env",
+    "unset -f __aiworkspace_mcp_env >/dev/null 2>&1 || true",
+    MCP_ENV_MARKER_END,
+  ].join("\n");
+}
+
+function findMcpEnvMarkerSpan(content) {
+  const start = content.indexOf(MCP_ENV_MARKER_START);
+  if (start === -1) return null;
+  const end = content.indexOf(MCP_ENV_MARKER_END, start);
+  if (end === -1) return null;
+  return { start, end };
+}
+
+function profileEol(content) {
+  return content.includes("\r\n") ? "\r\n" : "\n";
+}
+
+function toLf(content) {
+  return content.replace(/\r\n/g, "\n");
+}
+
+function fromLf(content, eol) {
+  return eol === "\r\n" ? content.replace(/\n/g, "\r\n") : content;
+}
+
+export function upsertMcpEnvMarkerBlock(content, block) {
+  const eol = profileEol(content);
+  const normalized = toLf(content);
+  const normalizedBlock = toLf(block);
+  const span = findMcpEnvMarkerSpan(normalized);
+  let result;
+  if (span) {
+    const { start, end } = span;
+    const before = normalized.slice(0, start).replace(/\n?$/, "\n");
+    const after = normalized.slice(end + MCP_ENV_MARKER_END.length).replace(/^\n?/, "\n");
+    result = `${before}${normalizedBlock}\n${after}`.replace(/\n$/, "") + "\n";
+  } else {
+    const trimmed = normalized.replace(/\n?$/, "");
+    result = (trimmed ? `${trimmed}\n\n` : "") + `${normalizedBlock}\n`;
+  }
+  return fromLf(result, eol);
+}
+
+/** True when `command` resolves on PATH (or `where` on Windows). */
+export function isCliAvailable(command, spawnFn = spawnSync) {
+  const probe = platform() === "win32"
+    ? spawnFn("where", [command], { encoding: "utf8" })
+    : spawnFn("which", [command], { encoding: "utf8" });
+  return probe.status === 0 && Boolean(probe.stdout?.trim());
+}
+
+export function extractMcpEnvMarkerBlock(content) {
+  const span = findMcpEnvMarkerSpan(content);
+  if (!span) return "(no managed block)";
+  return content.slice(span.start, span.end + MCP_ENV_MARKER_END.length);
+}
+
+export function removeMcpEnvMarkerBlock(content) {
+  const eol = profileEol(content);
+  const normalized = toLf(content);
+  const span = findMcpEnvMarkerSpan(normalized);
+  if (!span) return content;
+  const { start, end } = span;
+  const before = normalized.slice(0, start).replace(/\n$/, "");
+  const after = normalized.slice(end + MCP_ENV_MARKER_END.length).replace(/^\n/, "");
+  let result;
+  if (before && after) result = `${before}\n${after}\n`;
+  else if (before) result = `${before}\n`;
+  else if (after) result = `${after}\n`;
+  else result = "";
+  return fromLf(result, eol);
 }
 
 // ── package.json script merge ────────────────────────────────────────────

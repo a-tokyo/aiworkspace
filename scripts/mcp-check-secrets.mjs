@@ -27,28 +27,28 @@ function formatBearerPlaceholders(vars) {
 /** Parent-root-relative path to setup.md (e.g. `<workspace-repo>/setup.md`). */
 const setupDocRef = `${basename(REPO_DIR)}/setup.md`;
 
-function warnCursorBearerEnvLoading(envLocalPath) {
+function warnCursorBearerEnvLoading() {
   console.warn(
     "\nCursor resolves HTTP headers via ${env:VAR} at startup (not envFile). VS Code twins use envFile automatically.",
   );
   console.warn("Prefer OAuth HTTP servers when available.");
   if (platform() === "win32") {
     console.warn(
-      "On Windows: set User environment variables from .env.local (Settings → System → Environment variables),",
+      "On Windows: run `npm run mcp:install-shell -- --persist` for GUI apps,",
     );
     console.warn(
-      "  or launch Cursor from a shell after loading .env.local — see PowerShell example in",
+      "  or set User environment variables from .env.local — see PowerShell example in",
     );
     console.warn(`  ${setupDocRef} §4.1.\n`);
     return;
   }
   console.warn(
-    "Otherwise, add this one-time line to ~/.zshrc or ~/.bashrc, then restart Cursor:",
+    "Otherwise, run from your workspace repo:",
   );
   console.warn(
-    `  [ -f ${shellQuotedPath(envLocalPath)} ] && set -a && source ${shellQuotedPath(envLocalPath)} && set +a`,
+    `  cd ${shellQuotedPath(REPO_DIR)} && npm run mcp:install-shell`,
   );
-  console.warn(`  See ${setupDocRef} §4.1 for details.\n`);
+  console.warn(`  See ${setupDocRef} §4.1 for manual fallback.\n`);
 }
 
 const path = join(ROOT_CONFIG, ".agents", "mcp.json");
@@ -70,12 +70,11 @@ for (const [name, config] of Object.entries(parsed.mcpServers)) {
 }
 
 if (httpBearer.length > 0) {
-  const envLocalPath = join(WORKSPACE, ".env.local");
   console.warn("\n⚠ MCP HTTP servers using a Bearer token header:");
   for (const { name, vars } of httpBearer) {
     console.warn(`  - ${name} (Authorization: Bearer ${formatBearerPlaceholders(vars)})`);
   }
-  warnCursorBearerEnvLoading(envLocalPath);
+  warnCursorBearerEnvLoading();
 }
 
 if (required.size === 0) process.exit(0);

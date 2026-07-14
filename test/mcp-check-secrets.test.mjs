@@ -142,12 +142,11 @@ describe("mcp-check-secrets", () => {
     assert.match(out, /Bearer token header/);
     assert.match(out, /github/);
     assert.match(out, /\$\{env:GITHUB_PAT\}/);
-    assert.match(out, /~\/.zshrc/);
-    assert.match(out, /source ".*\.env\.local"/);
+    assert.match(out, /mcp:install-shell/);
     assert.match(out, /setup\.md §4\.1/);
   });
 
-  it("shell-quotes env path with $ and backticks in zshrc hint", () => {
+  it("shell-quotes workspace repo path in install-shell hint", () => {
     tmp = makeTmpDir();
     const parent = join(tmp.dir, "parent$`root");
     const ws = join(parent, "ws");
@@ -173,6 +172,7 @@ describe("mcp-check-secrets", () => {
     });
     assert.equal(r.status, 0);
     const out = `${r.stderr}${r.stdout}`;
+    assert.match(out, /mcp:install-shell/);
     assert.match(out, /parent\\\$/);
     assert.match(out, /\\`/);
   });

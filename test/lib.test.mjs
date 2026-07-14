@@ -5,7 +5,7 @@ import { join, dirname } from "node:path";
 import { makeTmpDir } from "./helpers.mjs";
 import {
   isSymlink, isRealDir, isFile, ensureDir, removeIfEmpty,
-  safeSymlink, symlinkTypeFor, shellQuotedPath, getSkillNames, normalizeGitHubUrl, cleanCliArtifacts,
+  safeSymlink, symlinkTypeFor, shellQuotedPath, homePrefixedShellPath, isUnderHome, getSkillNames, normalizeGitHubUrl, cleanCliArtifacts,
   cleanLockEntry,
   validateLockFile,
   isImportableMcpFile,
@@ -171,6 +171,23 @@ describe("shellQuotedPath", () => {
     assert.equal(quoted, '"/tmp/my \\"\\$dir\\`\\\\and\\$vars"');
     assert.match(quoted, /\\\$/);
     assert.match(quoted, /\\`/);
+  });
+});
+
+describe("homePrefixedShellPath", () => {
+  it("returns $HOME-relative path when under home", () => {
+    assert.equal(
+      homePrefixedShellPath("/Users/alice/dev/acme/workspace/scripts", "/Users/alice"),
+      '"$HOME/dev/acme/workspace/scripts"',
+    );
+  });
+
+  it("falls back to absolute quoting when outside home", () => {
+    assert.equal(homePrefixedShellPath("/tmp/ws/scripts", "/Users/alice"), '"/tmp/ws/scripts"');
+  });
+
+  it("isUnderHome rejects paths that escape with ..", () => {
+    assert.equal(isUnderHome("/Users/alice/../etc/passwd", "/Users/alice"), false);
   });
 });
 
