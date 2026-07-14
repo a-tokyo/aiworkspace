@@ -12,7 +12,7 @@ import {
 import { join, resolve, relative, dirname, isAbsolute, sep, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
-import { platform } from "node:os";
+import { platform, homedir } from "node:os";
 
 // ── Paths ───────────────────────────────────────────────────────────────
 
@@ -30,6 +30,72 @@ export function shellQuotedPath(filePath) {
     .replace(/"/g, '\\"')
     .replace(/\$/g, "\\$")
     .replace(/`/g, "\\`")}"`;
+}
+
+function escapeShellPathSuffix(segment) {
+  return segment
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\$/g, "\\$")
+    .replace(/`/g, "\\`");
+}
+
+function isWindowsAbsolutePath(filePath) {
+  return /^[A-Za-z]:[\\/]/.test(filePath);
+}
+
+function normalizeWindowsPath(filePath) {
+  return filePath.replace(/\//g, "\\").replace(/\\+$/, "");
+}
+
+/** Relative path from home to file when both are Windows absolutes; null otherwise. */
+function windowsPathRelativeFromHome(filePath, home) {
+  if (!isWindowsAbsolutePath(filePath) || !isWindowsAbsolutePath(home)) return null;
+  const base = normalizeWindowsPath(home);
+  const target = normalizeWindowsPath(filePath);
+  const prefix = `${base}\\`;
+  if (!target.toLowerCase().startsWith(prefix.toLowerCase())) return null;
+  const rel = target.slice(prefix.length);
+  if (!rel || rel.split("\\").includes("..")) return null;
+  return rel;
+}
+
+/** True when filePath resolves under home (excludes paths that escape via ..). */
+export function isUnderHome(filePath, home = homedir()) {
+  const winRel = windowsPathRelativeFromHome(filePath, home);
+  if (winRel !== null) return true;
+  const resolved = resolve(filePath);
+  const resolvedHome = resolve(home);
+  const rel = relative(resolvedHome, resolved);
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+}
+
+/**
+ * Shell path under $HOME for profile blocks, e.g. "$HOME/dev/lqa/workspace/scripts".
+ * Falls back to shellQuotedPath when not under home.
+ */
+export function homePrefixedShellPath(filePath, home = homedir()) {
+  const winRel = windowsPathRelativeFromHome(filePath, home);
+  if (winRel !== null) {
+    return `"$HOME/${escapeShellPathSuffix(winRel.split("\\").join("/"))}"`;
+  }
+  const resolved = resolve(filePath);
+  const resolvedHome = resolve(home);
+  if (!isUnderHome(resolved, resolvedHome)) return shellQuotedPath(resolved);
+  const rel = relative(resolvedHome, resolved).split(sep).join("/");
+  return `"$HOME/${escapeShellPathSuffix(rel)}"`;
+}
+
+function pwshHomePrefixedPath(filePath, userProfile = process.env.USERPROFILE ?? homedir()) {
+  const winRel = windowsPathRelativeFromHome(filePath, userProfile);
+  if (winRel !== null) {
+    return `"$env:USERPROFILE\\${winRel.replace(/'/g, "''")}"`;
+  }
+  const resolved = resolve(filePath);
+  const resolvedHome = resolve(userProfile);
+  if (!isUnderHome(resolved, resolvedHome)) return pwshQuotedPath(resolved);
+  const rel = relative(resolvedHome, resolved).split(sep).join("\\");
+  return `"$env:USERPROFILE\\${rel.replace(/'/g, "''")}"`;
 }
 
 /** Windows: `junction` for directories, `file` for files; undefined on Unix. */
@@ -647,9 +713,28 @@ export function resolvePwshProfilePath(
 export const MCP_ENV_MARKER_START = "# >>> aiworkspace-mcp-env >>>";
 export const MCP_ENV_MARKER_END = "# <<< aiworkspace-mcp-env <<<";
 
-export function buildMcpEnvMarkerBlock({ shell, envScriptPath }) {
-  const scriptsDir = dirname(envScriptPath);
+function envScriptScriptsDir(envScriptPath) {
+  if (isWindowsAbsolutePath(envScriptPath)) {
+    const norm = normalizeWindowsPath(envScriptPath);
+    const idx = norm.lastIndexOf("\\");
+    return idx === -1 ? norm : norm.slice(0, idx);
+  }
+  return resolve(dirname(envScriptPath));
+}
+
+export function buildMcpEnvMarkerBlock({ shell, envScriptPath, home = homedir() }) {
+  const scriptsDir = envScriptScriptsDir(envScriptPath);
   if (shell === "pwsh") {
+    if (isUnderHome(scriptsDir, home)) {
+      const dirQ = pwshHomePrefixedPath(scriptsDir, home);
+      return [
+        MCP_ENV_MARKER_START,
+        "# MCP Bearer tokens for Cursor. Managed by: npm run mcp:install-shell",
+        `$d = ${dirQ}`,
+        `if (Test-Path -LiteralPath "$d\\workspace-env.ps1") { . "$d\\workspace-env.ps1" }`,
+        MCP_ENV_MARKER_END,
+      ].join("\n");
+    }
     const scriptQ = pwshQuotedPath(envScriptPath);
     return [
       MCP_ENV_MARKER_START,
@@ -658,7 +743,20 @@ export function buildMcpEnvMarkerBlock({ shell, envScriptPath }) {
       MCP_ENV_MARKER_END,
     ].join("\n");
   }
-  const scriptQ = shellQuotedPath(envScriptPath);
+  if (isUnderHome(scriptsDir, home)) {
+    const dirQ = homePrefixedShellPath(scriptsDir, home);
+    return [
+      MCP_ENV_MARKER_START,
+      "# MCP Bearer tokens for Cursor. Managed by: npm run mcp:install-shell",
+      `__aiworkspace_mcp_env() { _d=${dirQ}; [ -f "$_d/workspace-env.sh" ] && . "$_d/workspace-env.sh" "$_d"; }`,
+      "__aiworkspace_mcp_env",
+      "unset -f __aiworkspace_mcp_env >/dev/null 2>&1 || true",
+      MCP_ENV_MARKER_END,
+    ].join("\n");
+  }
+  const scriptQ = shellQuotedPath(
+    isWindowsAbsolutePath(envScriptPath) ? normalizeWindowsPath(envScriptPath) : resolve(envScriptPath),
+  );
   const dirQ = shellQuotedPath(scriptsDir);
   return [
     MCP_ENV_MARKER_START,
