@@ -216,7 +216,7 @@ Edit locally — remove servers you do not use. MCP **definitions** stay in `.ag
 |------|-------------------------|---------------------------|
 | **All** | `AGENTS.md`, `.agents/mcp.json` | `.env.local` (secrets) |
 | **Claude** | `.claude/settings.json` | `.claude/settings.local.json` |
-| **Cursor** | `.cursor/rules/`, `.cursor/mcp.json` | User settings, MCP enable in Settings → MCP |
+| **Cursor** | `.cursor/settings.json`, `.cursor/rules/`, `.cursor/mcp.json` | Cursor User settings, MCP enable in Settings → MCP |
 | **VS Code** | `.vscode/settings.json`, `extensions.json`, `mcp.json` | User settings, MCP UI |
 | **Codex** | `config.toml` preamble, `.codex/rules/` | `~/.codex/config.toml`, `codex mcp login` |
 

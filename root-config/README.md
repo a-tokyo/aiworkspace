@@ -23,6 +23,7 @@ root-config/
 │   └── skills/         # Shared AI agent skills (workspace-wide)
 ├── .cursor/
 │   ├── mcp.json        # Symlink to ../.agents/mcp.json (Cursor MCP)
+│   ├── settings.json   # Team Cursor settings (mirrored)
 │   └── rules/          # Team Cursor rules (mirrored)
 ├── .claude/
 │   ├── settings.json   # Team Claude Code settings (mirrored)
@@ -43,8 +44,8 @@ Everyone shares **MCP definitions** (`.agents/mcp.json`) and **agent instruction
 | Concern | Claude | Cursor | VS Code | Codex |
 |---------|--------|--------|---------|-------|
 | MCP definitions | Symlinked `.mcp.json` | Symlinked `.cursor/mcp.json` | Generated `.vscode/mcp.json` | Generated `[mcp_servers.*]` in `config.toml` |
-| Team tool settings | `settings.json` | `.cursor/rules/` | `.vscode/settings.json`, `extensions.json` | Preamble in `config.toml`, `.codex/rules/` |
-| Personal overrides | `settings.local.json` (copy from example) | User `settings.json` in app data + MCP UI | User `settings.json` + MCP UI | `~/.codex/config.toml` + `codex mcp login` |
+| Team tool settings | `settings.json` | `.cursor/settings.json`, `.cursor/rules/` | `.vscode/settings.json`, `extensions.json` | Preamble in `config.toml`, `.codex/rules/` |
+| Personal overrides | `settings.local.json` (copy from example) | Cursor User settings + Settings → MCP | User `settings.json` + MCP UI | `~/.codex/config.toml` + `codex mcp login` |
 | MCP on/off per user | `enabledMcpjsonServers` in local file | Settings → MCP | MCP extension UI | OAuth login state per machine |
 | Secrets | `.env.local` at parent root | Same (+ Cursor Bearer env-load step) | `envFile` on MCP twin | `bearer_token_env_var` / user config |
 
@@ -109,11 +110,12 @@ Only `[mcp_servers.*]` tables in `.codex/config.toml` are regenerated; other Cod
 | Path | Purpose |
 |------|---------|
 | `.cursor/mcp.json` | Symlink to `../.agents/mcp.json` — MCP definitions (team) |
+| `.cursor/settings.json` | **Team** Cursor settings (plugins, workspace defaults) — mirrored to parent root |
 | `.cursor/rules/<name>.mdc` | **Team** persistent rules across all repos (mirrored) |
 | `.cursor/plans/<name>.md` | Saved workspace-level plans |
 | `.cursor/agents/<name>.md` | Custom Cursor agents |
 
-**Personal:** editor preferences and MCP enable/disable live in Cursor User settings (`~/Library/Application Support/Cursor/User/settings.json` on macOS) and Settings → MCP — not in repo files.
+**Team vs personal:** `settings.json` is shared and symlinked on `npm run sync`. Teams add plugin defaults and other workspace-scoped Cursor settings there (e.g. `"plugins": { "cursor-team-kit": { "enabled": true } }`). Personal editor preferences and MCP enable/disable stay in Cursor User settings (`~/Library/Application Support/Cursor/User/settings.json` on macOS) and Settings → MCP — not mirrored.
 
 ### `.claude/` (Claude Code)
 
