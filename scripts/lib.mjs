@@ -71,7 +71,7 @@ export function isUnderHome(filePath, home = homedir()) {
 }
 
 /**
- * Shell path under $HOME for profile blocks, e.g. "$HOME/dev/lqa/workspace/scripts".
+ * Shell path under $HOME for profile blocks, e.g. "$HOME/dev/acme/workspace/scripts".
  * Falls back to shellQuotedPath when not under home.
  */
 export function homePrefixedShellPath(filePath, home = homedir()) {

@@ -86,10 +86,10 @@ describe("mcp env marker blocks", () => {
   it("uses $HOME-relative scripts dir when workspace is under home", () => {
     const homeBlock = buildMcpEnvMarkerBlock({
       shell: "zsh",
-      envScriptPath: "/Users/alice/dev/lqa/workspace/scripts/workspace-env.sh",
+      envScriptPath: "/Users/alice/dev/acme/workspace/scripts/workspace-env.sh",
       home: "/Users/alice",
     });
-    assert.match(homeBlock, /_d="\$HOME\/dev\/lqa\/workspace\/scripts"/);
+    assert.match(homeBlock, /_d="\$HOME\/dev\/acme\/workspace\/scripts"/);
     assert.match(homeBlock, /\$_d\/workspace-env\.sh/);
     assert.doesNotMatch(homeBlock, /\/Users\/alice/);
   });
@@ -97,10 +97,10 @@ describe("mcp env marker blocks", () => {
   it("uses USERPROFILE-relative path in pwsh when under home", () => {
     const pwshHome = buildMcpEnvMarkerBlock({
       shell: "pwsh",
-      envScriptPath: "C:\\Users\\alice\\dev\\lqa\\workspace\\scripts\\workspace-env.ps1",
+      envScriptPath: "C:\\Users\\alice\\dev\\acme\\workspace\\scripts\\workspace-env.ps1",
       home: "C:\\Users\\alice",
     });
-    assert.match(pwshHome, /\$d = "\$env:USERPROFILE\\dev\\lqa\\workspace\\scripts"/);
+    assert.match(pwshHome, /\$d = "\$env:USERPROFILE\\dev\\acme\\workspace\\scripts"/);
     assert.match(pwshHome, /workspace-env\.ps1/);
     assert.doesNotMatch(pwshHome, /Users\\alice/);
   });

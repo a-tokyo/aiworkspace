@@ -177,8 +177,8 @@ describe("shellQuotedPath", () => {
 describe("homePrefixedShellPath", () => {
   it("returns $HOME-relative path when under home", () => {
     assert.equal(
-      homePrefixedShellPath("/Users/alice/dev/lqa/workspace/scripts", "/Users/alice"),
-      '"$HOME/dev/lqa/workspace/scripts"',
+      homePrefixedShellPath("/Users/alice/dev/acme/workspace/scripts", "/Users/alice"),
+      '"$HOME/dev/acme/workspace/scripts"',
     );
   });
 
