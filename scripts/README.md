@@ -16,7 +16,7 @@ These scripts are managed by [aiworkspace](https://github.com/a-tokyo/aiworkspac
 | `install-shell-profile.mjs` | Opt-in shell profile block for HTTP Bearer MCP env (Cursor) |
 | `mcp-bearer-env-keys.mjs` | Print Bearer env var names from canonical `mcp.json` |
 | `workspace-env.sh` / `workspace-env.ps1` | Source `.env.local`; macOS `launchctl` for Bearer keys |
-| `skills/setup-skills.mjs` | Mirrors root-config to parent root, creates skill symlinks |
+| `skills/setup-skills.mjs` | Mirrors root-config to parent root, migrates local `settings.json` copies (seed/backup), creates skill symlinks |
 | `skills/add-skill.mjs` | Wrapper around `skills add` with project routing and auto-setup |
 | `skills/remove-skill.mjs` | Wrapper around `skills remove` with cleanup |
 | `skills/create-skill.mjs` | Scaffolds a new manual skill directory |

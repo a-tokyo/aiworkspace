@@ -23,6 +23,7 @@ root-config/
 │   └── skills/         # Shared AI agent skills (workspace-wide)
 ├── .cursor/
 │   ├── mcp.json        # Symlink to ../.agents/mcp.json (Cursor MCP)
+│   ├── settings.json   # Team Cursor settings (mirrored)
 │   └── rules/          # Team Cursor rules (mirrored)
 ├── .claude/
 │   ├── settings.json   # Team Claude Code settings (mirrored)
@@ -43,14 +44,27 @@ Everyone shares **MCP definitions** (`.agents/mcp.json`) and **agent instruction
 | Concern | Claude | Cursor | VS Code | Codex |
 |---------|--------|--------|---------|-------|
 | MCP definitions | Symlinked `.mcp.json` | Symlinked `.cursor/mcp.json` | Generated `.vscode/mcp.json` | Generated `[mcp_servers.*]` in `config.toml` |
-| Team tool settings | `settings.json` | `.cursor/rules/` | `.vscode/settings.json`, `extensions.json` | Preamble in `config.toml`, `.codex/rules/` |
-| Personal overrides | `settings.local.json` (copy from example) | User `settings.json` in app data + MCP UI | User `settings.json` + MCP UI | `~/.codex/config.toml` + `codex mcp login` |
+| Team tool settings | `settings.json` | `.cursor/settings.json`, `.cursor/rules/` | `.vscode/settings.json`, `extensions.json` | Preamble in `config.toml`, `.codex/rules/` |
+| Personal overrides | `settings.local.json` (copy from example) | Cursor User settings + Settings → MCP | User `settings.json` + MCP UI | `~/.codex/config.toml` + `codex mcp login` |
 | MCP on/off per user | `enabledMcpjsonServers` in local file | Settings → MCP | MCP extension UI | OAuth login state per machine |
 | Secrets | `.env.local` at parent root | Same (+ Cursor Bearer env-load step) | `envFile` on MCP twin | `bearer_token_env_var` / user config |
 
 **Sync never overwrites:** `.claude/settings.local.json`, editor user settings, or `~/.codex/config.toml`.
 
 **Do not hand-edit** Codex `[mcp_servers.*]` blocks or VS Code `mcp.json` — edit `.agents/mcp.json` and run `npm run sync`.
+
+### Migrating mirrored `settings.json`
+
+Applies to any mirrored **`settings.json`** under `root-config/` (`.cursor/`, `.claude/`, `.vscode/`, …) when a parent-root copy (not a symlink) is replaced on sync:
+
+| Situation | Result |
+|-----------|--------|
+| Team canonical is `{}` and local has content | **Seed** — local content is written to team canonical; review and commit if team-wide |
+| Team canonical has content and local differs | **Backup** — local renamed to `settings.json.bak` (or `.bak.1`, …); merge anything you still need |
+| Local matches canonical | Local removed; symlink created |
+| Already a symlink to canonical | Unchanged |
+
+Seeding is common for new Cursor workspaces (empty `{}` baseline). Claude Code ships team permissions in canonical, so existing local copies usually hit the **backup** path instead.
 
 ## Supported Conventions
 
@@ -109,11 +123,14 @@ Only `[mcp_servers.*]` tables in `.codex/config.toml` are regenerated; other Cod
 | Path | Purpose |
 |------|---------|
 | `.cursor/mcp.json` | Symlink to `../.agents/mcp.json` — MCP definitions (team) |
+| `.cursor/settings.json` | **Team** Cursor settings (plugins, workspace defaults) — mirrored to parent root |
 | `.cursor/rules/<name>.mdc` | **Team** persistent rules across all repos (mirrored) |
 | `.cursor/plans/<name>.md` | Saved workspace-level plans |
 | `.cursor/agents/<name>.md` | Custom Cursor agents |
 
-**Personal:** editor preferences and MCP enable/disable live in Cursor User settings (`~/Library/Application Support/Cursor/User/settings.json` on macOS) and Settings → MCP — not in repo files.
+**Team vs personal:** `settings.json` is shared and symlinked on `npm run sync`. Teams add plugin defaults and other workspace-scoped Cursor settings there (e.g. `"plugins": { "cursor-team-kit": { "enabled": true } }`). Personal editor preferences and MCP enable/disable stay in Cursor User settings (`~/Library/Application Support/Cursor/User/settings.json` on macOS) and Settings → MCP — not mirrored.
+
+See [Migrating mirrored `settings.json`](#migrating-mirrored-settingsjson) when upgrading from a local copy at the parent root.
 
 ### `.claude/` (Claude Code)
 
@@ -132,6 +149,8 @@ cp <workspace-repo>/root-config/.claude/settings.local.json.example .claude/sett
 ```
 
 Remove MCP names you do not use. Sync never overwrites an existing `settings.local.json`.
+
+See [Migrating mirrored `settings.json`](#migrating-mirrored-settingsjson) when upgrading from a local copy at the parent root.
 
 ### `.vscode/` (VS Code + Copilot)
 

@@ -67,6 +67,7 @@ Everything follows **nearest-wins**: the closer a file is to the code being chan
 | Instructions | `root-config/AGENTS.md` synced to root | `<project>/AGENTS.md` |
 | Skills | `root-config/.agents/skills/` symlinked everywhere | `<project>/.agents/skills/` |
 | Cursor rules | `root-config/.cursor/rules/` symlinked | `<project>/.cursor/rules/` |
+| Cursor settings | `root-config/.cursor/settings.json` symlinked | — |
 | MCP servers | `root-config/.agents/mcp.json` synced to root | `<project>/.cursor/mcp.json` |
 | Docs | `docs/` repo (sibling) | `<project>/docs/` |
 

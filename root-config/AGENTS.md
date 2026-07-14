@@ -70,15 +70,7 @@ All tool configs are mirrored for every developer — Cursor, Claude Code, Codex
 
 On first use in a project, the tool asks you to approve the project MCP servers. Approve them to enable the tools.
 
-## Team vs personal by editor
-
-| Concern | Claude | Cursor | VS Code | Codex |
-|---------|--------|--------|---------|-------|
-| MCP definitions | `.mcp.json` (symlink) | `.cursor/mcp.json` (symlink) | `.vscode/mcp.json` (sync-derived) | `[mcp_servers.*]` in `.codex/config.toml` (sync-derived) |
-| Team settings | `settings.json` | `.cursor/rules/` | `.vscode/settings.json`, `extensions.json` | `config.toml` preamble, `.codex/rules/` |
-| Personal overrides | `settings.local.json` | User settings + MCP UI | User settings + MCP UI | `~/.codex/config.toml`, `codex mcp login` |
-
-See `root-config/README.md` for details. Edit MCP servers only in `.agents/mcp.json`, then `npm run sync`.
+Editor-specific team vs personal settings (Cursor, Claude, VS Code, Codex) live in `root-config/README.md`. Edit MCP servers only in `.agents/mcp.json`, then `npm run sync`.
 
 ## MCP authentication
 

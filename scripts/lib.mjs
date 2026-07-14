@@ -7,7 +7,7 @@
 import {
   existsSync, lstatSync, statSync, readdirSync, readlinkSync, symlinkSync,
   unlinkSync, mkdirSync, copyFileSync, cpSync, rmSync,
-  readFileSync, writeFileSync, realpathSync,
+  readFileSync, writeFileSync, realpathSync, renameSync,
 } from "node:fs";
 import { join, resolve, relative, dirname, isAbsolute, sep, basename } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -864,6 +864,91 @@ export function mergePackageScripts(
     added.push(name);
   }
   return { scripts, added };
+}
+
+// ── Mirrored settings migration ─────────────────────────────────────────
+
+/** Mirrored JSON settings files that seed from local or backup on migrate. */
+export const MIRROR_SETTINGS_FILENAMES = new Set(["settings.json"]);
+
+export function parseJsonObject(content) {
+  try {
+    const value = JSON.parse(content);
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) return value;
+  } catch { /* invalid json */ }
+  return null;
+}
+
+export function isEmptyJsonObjectContent(content) {
+  const value = parseJsonObject(content);
+  return value !== null && Object.keys(value).length === 0;
+}
+
+export function hasNonEmptyJsonObjectContent(content) {
+  const value = parseJsonObject(content);
+  return value !== null && Object.keys(value).length > 0;
+}
+
+export function formatJsonSettings(contentOrObject) {
+  const value = typeof contentOrObject === "string"
+    ? parseJsonObject(contentOrObject)
+    : contentOrObject;
+  if (value === null) return null;
+  return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+/** True when both sides parse as JSON objects with the same normalized content. */
+export function jsonSettingsSemanticallyEqual(contentA, contentB) {
+  const formattedA = formatJsonSettings(contentA);
+  const formattedB = formatJsonSettings(contentB);
+  if (formattedA === null || formattedB === null) return false;
+  return formattedA === formattedB;
+}
+
+export function nextAvailableBackupPath(filePath) {
+  let candidate = `${filePath}.bak`;
+  let index = 1;
+  while (existsSync(candidate)) {
+    candidate = `${filePath}.bak.${index}`;
+    index += 1;
+  }
+  return candidate;
+}
+
+/**
+ * Prepare to replace a local settings copy with a symlink to canonical.
+ * Seeds empty canonical from local on first migrate; otherwise backs up conflicts.
+ *
+ * @returns {{ action: "seeded"|"backed-up"|"removed-identical"|"skipped", backupPath?: string }}
+ */
+export function prepareMirroredSettingsMigration(canonicalPath, localPath, fileName) {
+  if (!MIRROR_SETTINGS_FILENAMES.has(fileName)) {
+    return { action: "skipped" };
+  }
+  if (!isFile(localPath)) {
+    return { action: "skipped" };
+  }
+
+  const canonical = readFileSync(canonicalPath, "utf8");
+  const local = readFileSync(localPath, "utf8");
+
+  if (canonical === local || jsonSettingsSemanticallyEqual(canonical, local)) {
+    unlinkSync(localPath);
+    return { action: "removed-identical" };
+  }
+
+  if (isEmptyJsonObjectContent(canonical) && hasNonEmptyJsonObjectContent(local)) {
+    const formatted = formatJsonSettings(local);
+    if (formatted) {
+      writeFileSync(canonicalPath, formatted);
+      unlinkSync(localPath);
+      return { action: "seeded" };
+    }
+  }
+
+  const backupPath = nextAvailableBackupPath(localPath);
+  renameSync(localPath, backupPath);
+  return { action: "backed-up", backupPath };
 }
 
 // ── git staging ──────────────────────────────────────────────────────────
