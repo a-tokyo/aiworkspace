@@ -4,6 +4,7 @@
 
 project_doc_fallback_filenames = ["AGENTS.md", "CLAUDE.md", "CONTINUING.md"]
 
+experimental_use_rmcp_client = true
+
 [mcp_servers.context7]
-command = "npx"
-args = ["-y", "@upstash/context7-mcp"]
+url = "https://mcp.context7.com/mcp/oauth"

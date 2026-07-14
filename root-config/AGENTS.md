@@ -50,7 +50,7 @@ Before working in a project, check for context nearest to the code first:
 
 MCP servers give agents shared tools. The workspace ships with:
 
-- `context7` — up-to-date documentation for libraries, frameworks, and tools.
+- `context7` — up-to-date documentation for libraries, frameworks, and tools (HTTP OAuth).
 
 These are defined once and shared across tools, the same way `AGENTS.md` and skills are. The canonical config is `.agents/mcp.json`. Claude Code and Cursor symlink to it. Codex (TOML) and VS Code (a different JSON schema) cannot share the file, so they have derived twins regenerated from canonical on `npm run sync`.
 

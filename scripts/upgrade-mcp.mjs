@@ -313,24 +313,33 @@ function collectUserServers(workspace, rootConfig) {
 }
 
 /**
+ * Bundled servers the team may customize in canonical — if already present, sync
+ * must not overwrite them (e.g. context7 transport or OAuth endpoint).
+ */
+const PRESERVE_USER_BUNDLED = new Set(["context7"]);
+
+/**
  * Merge template (bundled) MCP servers with user servers.
  *
  * Precedence:
  * - Servers only in `user` are preserved (e.g. a personal MCP entry).
- * - Servers in `template` always win on name overlap — bundled servers like
- *   `context7` refresh from aiworkspace on `npm run upgrade`.
+ * - Bundled servers in `PRESERVE_USER_BUNDLED` are kept when the team already
+ *   defined them in canonical (sync does not clobber custom context7).
+ * - Other servers in `template` win on name overlap.
  *
- * To override a bundled server locally, use per-project MCP config
+ * To override a non-preserved bundled server locally, use per-project MCP config
  * (`<project>/.cursor/mcp.json`, nearest-wins) rather than editing canonical.
  */
 function mergeServers(template, user, disabled = []) {
   const off = new Set(disabled);
   const merged = {};
   for (const [name, config] of Object.entries(user)) {
-    if (!(name in template)) merged[name] = config;
+    if (!(name in template) || PRESERVE_USER_BUNDLED.has(name)) merged[name] = config;
   }
   for (const [name, config] of Object.entries(template)) {
-    if (!off.has(name)) merged[name] = config;
+    if (off.has(name)) continue;
+    if (PRESERVE_USER_BUNDLED.has(name) && name in user) continue;
+    merged[name] = config;
   }
   for (const name of off) delete merged[name];
   return merged;
@@ -571,10 +580,17 @@ export function upgradeMcp({ templateRoot, repoDir = REPO_DIR }) {
 
   const off = new Set(disabled);
   const added = Object.keys(templateServers).filter((k) => !(k in userServers) && !off.has(k));
-  const refreshed = Object.keys(templateServers).filter((k) => k in userServers && !off.has(k));
+  const refreshed = Object.keys(templateServers).filter((k) => {
+    if (!(k in userServers) || off.has(k)) return false;
+    return !PRESERVE_USER_BUNDLED.has(k);
+  });
+  const keptBundled = Object.keys(templateServers).filter((k) =>
+    PRESERVE_USER_BUNDLED.has(k) && k in userServers && !off.has(k),
+  );
   const kept = Object.keys(userServers).filter((k) => !(k in templateServers) && !off.has(k));
   for (const name of added) console.log(`  + ${name} (from template)`);
   for (const name of refreshed) console.log(`  ↻ refreshed ${name} (bundled)`);
+  for (const name of keptBundled) console.log(`  ✓ kept ${name} (user overrides bundled)`);
   for (const name of kept) console.log(`  ✓ kept ${name} (user)`);
   for (const name of off) console.log(`  ⊘ ${name} (disabled via .agents/mcp-disabled.json)`);
 
