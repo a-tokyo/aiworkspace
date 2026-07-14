@@ -66,7 +66,7 @@ To add or change a server, edit `.agents/mcp.json`. `npm run sync` refreshes the
 
 All tool configs are mirrored for every developer — Cursor, Claude Code, Codex, and VS Code. There is no opt-out; unused configs are inert. To override workspace-wide MCP for one repo, use `<project>/.cursor/mcp.json` (nearest-wins).
 
-`npm run sync` refreshes bundled servers from the aiworkspace template and preserves any servers you added that are not in the template. Editing a bundled server in `root-config/.agents/mcp.json` will be overwritten on the next sync — use per-project MCP for local overrides.
+`npm run sync` refreshes bundled servers from the aiworkspace template when they are missing from canonical, and preserves servers you added that are not in the template. If canonical already defines **`context7`**, sync leaves it unchanged (any transport or URL) — customize it there. For other bundled defaults, use per-project MCP (`<project>/.cursor/mcp.json`, nearest-wins).
 
 On first use in a project, the tool asks you to approve the project MCP servers. Approve them to enable the tools.
 
