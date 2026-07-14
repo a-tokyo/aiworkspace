@@ -55,7 +55,7 @@ Everyone shares **MCP definitions** (`.agents/mcp.json`) and **agent instruction
 
 ### Migrating mirrored `settings.json`
 
-Applies to **`.cursor/settings.json`** and **`.claude/settings.json`** when a parent-root copy (not a symlink) is replaced on sync:
+Applies to any mirrored **`settings.json`** under `root-config/` (`.cursor/`, `.claude/`, `.vscode/`, …) when a parent-root copy (not a symlink) is replaced on sync:
 
 | Situation | Result |
 |-----------|--------|

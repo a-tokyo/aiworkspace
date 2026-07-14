@@ -1,7 +1,7 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import {
-  existsSync, mkdirSync, writeFileSync, readFileSync, readlinkSync, lstatSync,
+  existsSync, mkdirSync, writeFileSync, readFileSync, lstatSync,
 } from "node:fs";
 import { join } from "node:path";
 import { makeTmpDir, buildFakeWorkspace, runScript } from "./helpers.mjs";
