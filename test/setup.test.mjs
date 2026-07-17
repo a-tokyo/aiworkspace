@@ -98,6 +98,24 @@ describe("setup-skills", () => {
     assert.equal(readFileSync(claude, "utf8"), readFileSync(agents, "utf8"));
   });
 
+  it("self-heals a root-config/CLAUDE.md missing from an npm-installed template", () => {
+    // npm publish silently drops symlinks from the packed tarball, so a workspace
+    // bootstrapped from the published package never receives root-config/CLAUDE.md.
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    rmSync(join(ws, "root-config", "CLAUDE.md"));
+
+    runScript(setupScript(ws), ["--ensure"], { cwd: ws });
+
+    const canonical = join(ws, "root-config", "CLAUDE.md");
+    assert.ok(lstatSync(canonical).isSymbolicLink(), "root-config/CLAUDE.md should be recreated as a symlink");
+    assert.equal(readlinkSync(canonical), "AGENTS.md");
+
+    const claude = join(tmp.dir, "CLAUDE.md");
+    assert.ok(lstatSync(claude).isSymbolicLink(), "CLAUDE.md should still mirror to parent root");
+    assert.equal(readlinkSync(claude), "AGENTS.md");
+  });
+
   it("mirrors MCP configs to parent root", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });

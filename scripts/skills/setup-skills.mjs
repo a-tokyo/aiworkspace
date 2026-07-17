@@ -68,8 +68,22 @@ function migrateLocalCopyBeforeSymlink(canonicalPath, localPath, fileName) {
 
 // ── Mirror root-config → parent root ────────────────────────────────────
 
+/**
+ * npm publish silently drops symlinks from the packed tarball, so a workspace
+ * bootstrapped from the published `aiworkspace` package (rather than a git
+ * clone of this repo) never receives root-config/CLAUDE.md. Recreate it here
+ * — the same self-healing `upgrade-mcp.mjs` already does for `.mcp.json`.
+ */
+function ensureRootConfigClaudeMd() {
+  if (existsSync(join(ROOT_CONFIG, "AGENTS.md"))) {
+    safeSymlink("AGENTS.md", join(ROOT_CONFIG, "CLAUDE.md"), { quiet: isEnsure });
+  }
+}
+
 function mirrorRootConfig() {
   if (!existsSync(ROOT_CONFIG)) { log("  ⚠ No root-config/ directory found"); return; }
+
+  ensureRootConfigClaudeMd();
 
   const tracked = gitTrackedChildren(ROOT_CONFIG);
 
