@@ -6,7 +6,7 @@ import {
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { makeTmpDir, buildFakeWorkspace, runScript } from "./helpers.mjs";
-import { upgradeMcp, upgradeEnvScaffold, toVscodeServers, applySecretTransforms, wrapStdioWithEnvLoader, mcpLoadEnvRel } from "../scripts/upgrade-mcp.mjs";
+import { upgradeMcp, upgradeEnvScaffold, toVscodeServers, toCursorServers, applySecretTransforms, wrapStdioWithEnvLoader, mcpLoadEnvRel } from "../scripts/upgrade-mcp.mjs";
 import { readMcpJson, isImportableMcpFile } from "../scripts/lib.mjs";
 
 const REAL = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -834,19 +834,143 @@ describe("upgradeMcp", () => {
     assert.ok(!codex.includes("[mcp_servers.context7]"));
   });
 
-  it("imports a hand-written root-config mcp file before symlinking over it", () => {
+  it("imports a hand-written root-config cursor mcp file before regenerating it as a twin", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
     const cursorMcp = join(ws, "root-config", ".cursor", "mcp.json");
     mkdirSync(dirname(cursorMcp), { recursive: true });
-    // safeSymlink replaces this real file with a symlink — its servers must be rescued.
+    // Cold start (no canonical yet): the generated cursor twin overwrites this real file,
+    // so its servers must be rescued into canonical first — same as .vscode/mcp.json.
     writeFileSync(cursorMcp, JSON.stringify({
       mcpServers: { handwritten: { type: "stdio", command: "npx", args: ["-y", "hand-mcp"] } },
     }, null, 2) + "\n");
 
     upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
     const merged = JSON.parse(readFileSync(join(ws, "root-config", ".agents", "mcp.json"), "utf8"));
-    assert.ok(merged.mcpServers.handwritten, "hand-written servers must not be destroyed by the symlink");
-    assert.ok(lstatSync(cursorMcp).isSymbolicLink());
+    assert.ok(merged.mcpServers.handwritten, "hand-written servers must not be destroyed by regeneration");
+    assert.ok(!lstatSync(cursorMcp).isSymbolicLink(), "cursor mcp.json is a generated twin, not a symlink");
+    const cursorOut = JSON.parse(readFileSync(cursorMcp, "utf8"));
+    assert.ok(cursorOut.mcpServers.handwritten, "twin still includes the rescued server");
+  });
+
+  it("does not import cursor twin servers back into canonical once canonical exists", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const canonical = join(ws, "root-config", ".agents", "mcp.json");
+    mkdirSync(dirname(canonical), { recursive: true });
+    writeFileSync(
+      canonical,
+      JSON.stringify({ mcpServers: { context7: { type: "stdio", command: "npx" } } }, null, 2) + "\n",
+    );
+    const cursorMcp = join(ws, "root-config", ".cursor", "mcp.json");
+    mkdirSync(dirname(cursorMcp), { recursive: true });
+    // Simulates a stale generated twin from a prior run — must never be read back as if a
+    // user hand-authored it, or the twin's ${env:VAR} syntax would leak into canonical.
+    writeFileSync(
+      cursorMcp,
+      JSON.stringify({ mcpServers: { stray: { type: "stdio", command: "npx", args: ["-y", "stray-mcp"] } } }, null, 2) + "\n",
+    );
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const merged = JSON.parse(readFileSync(canonical, "utf8"));
+    assert.equal(merged.mcpServers.stray, undefined, "cursor twin content is never read back into canonical");
+  });
+
+  it("normalizes ${env:VAR} to bare ${VAR} when importing a parent-root .cursor/mcp.json", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    // A brand-new user's personal parent-root .cursor/mcp.json, written in Cursor's own
+    // required ${env:VAR} syntax — this is real data a first-time `npm run sync` rescues
+    // into canonical. If left untranslated it silently reintroduces the exact bug this
+    // whole fix exists to close (canonical must stay bare ${VAR} for Claude Code).
+    mkdirSync(join(tmp.dir, ".cursor"), { recursive: true });
+    writeFileSync(
+      join(tmp.dir, ".cursor", "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          sonarqube: {
+            type: "http",
+            url: "https://sonar.example.com/mcp",
+            headers: { Authorization: "Bearer ${env:SONAR_TOKEN}" },
+          },
+        },
+      }, null, 2) + "\n",
+    );
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const canonical = JSON.parse(readFileSync(join(ws, "root-config", ".agents", "mcp.json"), "utf8"));
+    assert.equal(
+      canonical.mcpServers.sonarqube.headers.Authorization, "Bearer ${SONAR_TOKEN}",
+      "imported ${env:VAR} must be normalized to bare ${VAR} in canonical",
+    );
+  });
+
+  it("regenerates the cursor twin in place of a stale symlink from the old scheme", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const canonical = join(ws, "root-config", ".agents", "mcp.json");
+    mkdirSync(dirname(canonical), { recursive: true });
+    writeFileSync(
+      canonical,
+      JSON.stringify({ mcpServers: { context7: { type: "stdio", command: "npx" } } }, null, 2) + "\n",
+    );
+    const cursorMcp = join(ws, "root-config", ".cursor", "mcp.json");
+    mkdirSync(dirname(cursorMcp), { recursive: true });
+    // The pre-fix scheme left .cursor/mcp.json as a symlink to canonical. writeFileSync
+    // follows symlinks, so this must be unlinked before the twin is written or the write
+    // would land on canonical instead.
+    symlinkSync("../.agents/mcp.json", cursorMcp);
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    assert.ok(!lstatSync(cursorMcp).isSymbolicLink(), "stale symlink replaced with a real twin");
+    const cursorOut = JSON.parse(readFileSync(cursorMcp, "utf8"));
+    assert.ok(cursorOut.mcpServers.context7, "twin still has the merged servers");
+    const canonicalOut = JSON.parse(readFileSync(canonical, "utf8"));
+    assert.deepEqual(Object.keys(canonicalOut.mcpServers), ["context7"], "canonical untouched by the stale symlink write");
+  });
+
+  it("toCursorServers transforms bare ${VAR} to ${env:VAR} and adds no envFile", () => {
+    const out = toCursorServers({
+      s: {
+        type: "http",
+        url: "https://example.com/mcp",
+        headers: { Authorization: "Bearer ${TOKEN}" },
+        env: { KEY: "${env:ALREADY}" },
+      },
+    });
+    assert.equal(out.s.headers.Authorization, "Bearer ${env:TOKEN}");
+    assert.equal(out.s.env.KEY, "${env:ALREADY}", "already-prefixed values pass through unchanged");
+    assert.equal(out.s.envFile, undefined, "Cursor reads ${env:VAR} from process env, not envFile");
+  });
+
+  it("cursor twin gets ${env:VAR} for HTTP Bearer servers on upgrade, canonical stays bare", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const canonical = join(ws, "root-config", ".agents", "mcp.json");
+    mkdirSync(dirname(canonical), { recursive: true });
+    writeFileSync(
+      canonical,
+      JSON.stringify({
+        mcpServers: {
+          custom: {
+            type: "http",
+            url: "https://example.com/mcp",
+            headers: { Authorization: "Bearer ${MY_TOKEN}" },
+          },
+        },
+      }, null, 2) + "\n",
+    );
+
+    upgradeMcp({ templateRoot: TEMPLATE_ROOT, repoDir: ws });
+    const canonicalOut = JSON.parse(readFileSync(canonical, "utf8"));
+    assert.equal(
+      canonicalOut.mcpServers.custom.headers.Authorization, "Bearer ${MY_TOKEN}",
+      "canonical keeps bare ${VAR} — this is what Claude Code's .mcp.json symlink resolves natively",
+    );
+    const cursorOut = JSON.parse(readFileSync(join(ws, "root-config", ".cursor", "mcp.json"), "utf8"));
+    assert.equal(
+      cursorOut.mcpServers.custom.headers.Authorization, "Bearer ${env:MY_TOKEN}",
+      "cursor twin translates to ${env:VAR} — the only syntax Cursor's MCP client resolves for headers",
+    );
   });
 });

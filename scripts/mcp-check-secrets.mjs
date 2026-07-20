@@ -20,16 +20,27 @@ import {
 } from "./lib.mjs";
 import { loadEnvLocal } from "./mcp-load-env.mjs";
 
-function formatBearerPlaceholders(vars) {
-  return vars.map((v) => `\${env:${v}}`).join(", ");
-}
-
 /** Parent-root-relative path to setup.md (e.g. `<workspace-repo>/setup.md`). */
 const setupDocRef = `${basename(REPO_DIR)}/setup.md`;
 
-function warnCursorBearerEnvLoading() {
+/**
+ * Whole-value Bearer + placeholders pattern — matches "Bearer ${VAR}", "Bearer ${env:VAR}",
+ * or several placeholders back to back, nothing else. `hasLiteralCredentials` (upgrade-mcp.mjs)
+ * only rejects a header with *zero* `${`, so "Bearer sk-live-XXX ${DECOY}" slips through
+ * uncaught; echoing that verbatim would print the literal secret to the console. Only
+ * headers that are Bearer + placeholders through and through are safe to echo as-is —
+ * anything else falls back to the placeholder names only, never the surrounding text.
+ */
+const BEARER_ONLY_PLACEHOLDERS = /^Bearer\s+(?:\$\{(?:env:)?[A-Za-z_][A-Za-z0-9_]*\}\s*)+$/i;
+
+function safeBearerDisplay(auth, vars) {
+  if (BEARER_ONLY_PLACEHOLDERS.test(auth)) return auth;
+  return `Bearer ${vars.map((v) => `\${${v}}`).join(", ")} (redacted — header has non-placeholder text)`;
+}
+
+function warnBearerEnvLoading() {
   console.warn(
-    "\nCursor resolves HTTP headers via ${env:VAR} at startup (not envFile). VS Code twins use envFile automatically.",
+    "\nCursor (${env:VAR} twin) and Claude Code (bare ${VAR} in canonical) both resolve HTTP headers from the real process environment at startup — neither reads .env.local directly for headers. VS Code twins use envFile automatically.",
   );
   console.warn("Prefer OAuth HTTP servers when available.");
   if (platform() === "win32") {
@@ -66,15 +77,15 @@ for (const [name, config] of Object.entries(parsed.mcpServers)) {
     for (const v of secretVarsForMcpServer(name, config)) required.add(v);
   }
   const bearerVars = httpBearerVarsForMcpServer(config);
-  if (bearerVars.size > 0) httpBearer.push({ name, vars: [...bearerVars] });
+  if (bearerVars.size > 0) httpBearer.push({ name, auth: config.headers.Authorization, vars: [...bearerVars] });
 }
 
 if (httpBearer.length > 0) {
   console.warn("\n⚠ MCP HTTP servers using a Bearer token header:");
-  for (const { name, vars } of httpBearer) {
-    console.warn(`  - ${name} (Authorization: Bearer ${formatBearerPlaceholders(vars)})`);
+  for (const { name, auth, vars } of httpBearer) {
+    console.warn(`  - ${name} (Authorization: ${safeBearerDisplay(auth, vars)})`);
   }
-  warnCursorBearerEnvLoading();
+  warnBearerEnvLoading();
 }
 
 if (required.size === 0) process.exit(0);
