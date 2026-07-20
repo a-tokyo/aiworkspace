@@ -6,7 +6,7 @@
  * upgrade-mcp.mjs — Scaffold and merge MCP configs during npm run sync.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdtempSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdtempSync, unlinkSync } from "node:fs";
 import { join, dirname, resolve, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
@@ -261,7 +261,10 @@ function importServersFromFile(path, rootConfig, servers, { onlyMissing = false 
       console.warn(`  ⚠ Skipping "${name}" from ${path} — contains literal credentials (use \${VAR} placeholders)`);
       continue;
     }
-    servers[name] = config;
+    // Imported files (a personal parent-root .cursor/mcp.json, a hand-written .mcp.json)
+    // may carry Cursor's ${env:VAR} syntax — normalize to canonical's bare ${VAR} so this
+    // import path can't silently reintroduce the syntax that breaks Claude Code.
+    servers[name] = normalizeToBarePlaceholderDeep(config);
   }
 }
 
@@ -294,11 +297,12 @@ function collectUserServers(workspace, rootConfig) {
     importServersFromFile(join(workspace, ".agents", "mcp.json"), rootConfig, servers, { onlyMissing: true });
     importServersFromFile(join(workspace, ".mcp.json"), rootConfig, servers, { onlyMissing: true });
     importServersFromFile(join(workspace, ".cursor", "mcp.json"), rootConfig, servers, { onlyMissing: true });
-    // These two are normally symlinks to canonical (isImportableMcpFile skips those). When
-    // one is a *real* file, a user hand-wrote servers into it — read them before
+    // .mcp.json is normally a symlink to canonical (isImportableMcpFile skips those). When
+    // it's a *real* file, a user hand-wrote servers into it — read them before
     // ensureMcpEntryLink replaces the file with a symlink, or they are lost.
+    // .cursor/mcp.json is *always* a generated twin now (like .vscode/mcp.json), never
+    // read back here — its content is toCursorServers(merged), not user-authored.
     importServersFromFile(join(rootConfig, ".mcp.json"), rootConfig, servers, { onlyMissing: true });
-    importServersFromFile(join(rootConfig, ".cursor", "mcp.json"), rootConfig, servers, { onlyMissing: true });
   } else {
     importServersFromFile(join(workspace, ".agents", "mcp.json"), rootConfig, servers);
     importServersFromFile(join(workspace, ".mcp.json"), rootConfig, servers);
@@ -351,9 +355,9 @@ function mergeServers(template, user, disabled = []) {
  * Deleting a bundled server from canonical cannot express intent — sync can't tell a
  * deliberate removal from a first-time consumer who simply hasn't got it yet, so it
  * resurrects the server (and stages it). The opt-out lives in a sibling file rather than
- * canonical because canonical *is* `.mcp.json` / `.cursor/mcp.json` via symlink: an extra
- * top-level key risks editor schema rejection, and anything left under `mcpServers` would
- * still be launched by Claude Code. A disabled server must be absent entirely.
+ * canonical because canonical *is* `.mcp.json` via symlink: an extra top-level key risks
+ * editor schema rejection, and anything left under `mcpServers` would still be launched
+ * by Claude Code. A disabled server must be absent entirely.
  */
 export function readDisabledServers(rootConfig) {
   const path = join(rootConfig, ".agents", "mcp-disabled.json");
@@ -446,20 +450,43 @@ function ensureCodexRmcpFlag(preamble) {
   return lines.join("\n");
 }
 
-/** Transform canonical ${VAR} placeholders to VS Code ${env:VAR} syntax. */
-const VSCODE_ENV_PLACEHOLDER = /(?<!\$)\$\{(?!env:)([A-Za-z_][A-Za-z0-9_]*)\}/g;
+/**
+ * Transform canonical bare ${VAR} placeholders to the ${env:VAR} syntax that VS Code and
+ * Cursor both require for MCP config interpolation (Claude Code requires the opposite —
+ * bare ${VAR} — so canonical stays in that form and only these two editor twins transform
+ * it). Already-prefixed ${env:VAR} values pass through unchanged.
+ */
+const ENV_PREFIX_PLACEHOLDER = /(?<!\$)\$\{(?!env:)([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
-function transformVscodeValue(value) {
+function transformEnvPrefixValue(value) {
   if (typeof value !== "string") return value;
-  return value.replace(VSCODE_ENV_PLACEHOLDER, "${env:$1}");
+  return value.replace(ENV_PREFIX_PLACEHOLDER, "${env:$1}");
 }
 
-function transformVscodeDeep(value) {
-  if (typeof value === "string") return transformVscodeValue(value);
-  if (Array.isArray(value)) return value.map(transformVscodeDeep);
+function transformEnvPrefixDeep(value) {
+  if (typeof value === "string") return transformEnvPrefixValue(value);
+  if (Array.isArray(value)) return value.map(transformEnvPrefixDeep);
   if (value && typeof value === "object") {
     const out = {};
-    for (const [k, v] of Object.entries(value)) out[k] = transformVscodeDeep(v);
+    for (const [k, v] of Object.entries(value)) out[k] = transformEnvPrefixDeep(v);
+    return out;
+  }
+  return value;
+}
+
+/**
+ * Inverse of the transform above — strips ${env:VAR} down to canonical's bare ${VAR}.
+ * Applied to anything folded into canonical from an external file (a parent-root
+ * .cursor/mcp.json, a hand-written .mcp.json, etc.): those files may legitimately carry
+ * Cursor's ${env:VAR} syntax, but canonical itself must stay bare or Claude Code's native
+ * resolution breaks — the same incident this whole transform pair exists to prevent.
+ */
+function normalizeToBarePlaceholderDeep(value) {
+  if (typeof value === "string") return value.replace(/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g, "${$1}");
+  if (Array.isArray(value)) return value.map(normalizeToBarePlaceholderDeep);
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = normalizeToBarePlaceholderDeep(v);
     return out;
   }
   return value;
@@ -468,7 +495,7 @@ function transformVscodeDeep(value) {
 export function toVscodeServers(merged) {
   const out = {};
   for (const [name, config] of Object.entries(merged)) {
-    let c = transformVscodeDeep(config);
+    let c = transformEnvPrefixDeep(config);
     const kind = serverKind(c);
     const needsEnvFile = (kind === "stdio" && isAlreadyWrapped(c))
       || (kind === "http" && needsSecrets(c));
@@ -476,6 +503,19 @@ export function toVscodeServers(merged) {
       c = { ...c, envFile: VSCODE_ENV_FILE };
     }
     out[name] = c;
+  }
+  return out;
+}
+
+/**
+ * Project merged servers to Cursor's twin. Cursor resolves ${env:VAR} in HTTP headers from
+ * the real process environment at startup, not from an envFile (see setup.md §4.1) — so
+ * unlike the VS Code twin, no envFile is added here, just the placeholder syntax transform.
+ */
+export function toCursorServers(merged) {
+  const out = {};
+  for (const [name, config] of Object.entries(merged)) {
+    out[name] = transformEnvPrefixDeep(config);
   }
   return out;
 }
@@ -606,7 +646,17 @@ export function upgradeMcp({ templateRoot, repoDir = REPO_DIR }) {
   ensureMcpEntryLink(".agents/mcp.json", mcpRootSymlink, ".agents/mcp.json", rel, changedPaths);
 
   ensureDir(join(rootConfig, ".cursor"));
-  ensureMcpEntryLink("../.agents/mcp.json", cursorMcp, "../.agents/mcp.json", rel, changedPaths);
+  // Migration from the old symlink-to-canonical scheme: writeFileSync follows symlinks, so
+  // writing through a stale `.cursor/mcp.json -> ../.agents/mcp.json` link here would
+  // silently overwrite canonical with Cursor-transformed content instead of replacing the
+  // link. Unlink it first — the twin below is a real file from here on, like .vscode/mcp.json.
+  if (isSymlink(cursorMcp)) unlinkSync(cursorMcp);
+  const cursorOut = JSON.stringify({ mcpServers: toCursorServers(merged) }, null, 2) + "\n";
+  if (!existsSync(cursorMcp) || readFileSync(cursorMcp, "utf8") !== cursorOut) {
+    writeFileSync(cursorMcp, cursorOut);
+    changedPaths.push(rel(cursorMcp));
+    console.log(`  ✓ ${rel(cursorMcp)} (from merged)`);
+  }
 
   const templateCodex = join(templateRoot, ".codex", "config.toml");
   ensureDir(join(rootConfig, ".codex"));

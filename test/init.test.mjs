@@ -149,7 +149,7 @@ describe("aiworkspace init", () => {
     assert.ok(existsSync(mcp), "canonical mcp.json should be included");
     assert.ok(readFileSync(mcp, "utf8").includes("context7"), "mcp.json should define context7");
     assert.ok(lstatSync(join(rc, ".mcp.json")).isSymbolicLink(), ".mcp.json should be a symlink");
-    assert.ok(lstatSync(join(rc, ".cursor", "mcp.json")).isSymbolicLink(), ".cursor/mcp.json should be a symlink");
+    assert.ok(!lstatSync(join(rc, ".cursor", "mcp.json")).isSymbolicLink(), ".cursor/mcp.json should be a generated twin, not a symlink");
     assert.ok(existsSync(join(rc, ".codex", "config.toml")), "codex twin should be included");
     assert.ok(existsSync(join(rc, ".vscode", "mcp.json")), "vscode twin should be included");
     assert.ok(existsSync(join(rc, ".env.example")), ".env.example should be in root-config");

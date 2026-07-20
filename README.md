@@ -97,7 +97,7 @@ MCP servers give agents shared tools. Define them once in `root-config/.agents/m
 |------|--------|-----|
 | `.agents/mcp.json` | — | canonical, edit this one |
 | `.mcp.json` | Claude Code | symlink |
-| `.cursor/mcp.json` | Cursor | symlink |
+| `.cursor/mcp.json` | Cursor | generated on sync |
 | `.vscode/mcp.json` | VS Code / Copilot | generated on sync |
 | `.codex/config.toml` | Codex | generated on sync |
 

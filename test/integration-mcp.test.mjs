@@ -62,11 +62,14 @@ describe("MCP out-of-the-box (init + upgrade)", () => {
     assert.ok(existsSync(canonical), "canonical mcp.json should exist");
     assert.ok(readFileSync(canonical, "utf8").includes("context7"), "bundled context7 server should be present");
 
-    assert.ok(lstatSync(join(rc, ".mcp.json")).isSymbolicLink(), ".mcp.json twin should be a symlink");
-    assert.ok(lstatSync(join(rc, ".cursor", "mcp.json")).isSymbolicLink(), ".cursor/mcp.json twin should be a symlink");
+    assert.ok(lstatSync(join(rc, ".mcp.json")).isSymbolicLink(), ".mcp.json (Claude Code) should be a symlink to canonical");
+    assert.ok(!lstatSync(join(rc, ".cursor", "mcp.json")).isSymbolicLink(), ".cursor/mcp.json should be a generated twin, not a symlink");
     assert.ok(existsSync(join(rc, ".codex", "config.toml")), "codex twin should exist");
     assert.ok(existsSync(join(rc, ".vscode", "mcp.json")), "vscode twin should exist");
     assert.ok(existsSync(join(rc, ".env.example")), ".env.example should exist");
+
+    const cursorTwin = JSON.parse(readFileSync(join(rc, ".cursor", "mcp.json"), "utf8"));
+    assert.ok(cursorTwin.mcpServers?.context7, "cursor twin should project the context7 server");
 
     assert.ok(existsSync(join(tmp.dir, ".mcp.json")), "parent-root .mcp.json symlink should exist after mirror");
     assert.ok(existsSync(join(tmp.dir, ".cursor", "mcp.json")), "parent-root .cursor/mcp.json should exist after mirror");

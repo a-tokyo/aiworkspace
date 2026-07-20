@@ -22,7 +22,7 @@ root-config/
 │   ├── mcp.json        # Canonical MCP server definitions
 │   └── skills/         # Shared AI agent skills (workspace-wide)
 ├── .cursor/
-│   ├── mcp.json        # Symlink to ../.agents/mcp.json (Cursor MCP)
+│   ├── mcp.json        # Generated twin of ../.agents/mcp.json, ${env:VAR} syntax (Cursor MCP)
 │   ├── settings.json   # Team Cursor settings (mirrored)
 │   └── rules/          # Team Cursor rules (mirrored)
 ├── .claude/
@@ -43,11 +43,11 @@ Everyone shares **MCP definitions** (`.agents/mcp.json`) and **agent instruction
 
 | Concern | Claude | Cursor | VS Code | Codex |
 |---------|--------|--------|---------|-------|
-| MCP definitions | Symlinked `.mcp.json` | Symlinked `.cursor/mcp.json` | Generated `.vscode/mcp.json` | Generated `[mcp_servers.*]` in `config.toml` |
+| MCP definitions | Symlinked `.mcp.json` | Generated `.cursor/mcp.json` | Generated `.vscode/mcp.json` | Generated `[mcp_servers.*]` in `config.toml` |
 | Team tool settings | `settings.json` | `.cursor/settings.json`, `.cursor/rules/` | `.vscode/settings.json`, `extensions.json` | Preamble in `config.toml`, `.codex/rules/` |
 | Personal overrides | `settings.local.json` (copy from example) | Cursor User settings + Settings → MCP | User `settings.json` + MCP UI | `~/.codex/config.toml` + `codex mcp login` |
 | MCP on/off per user | `enabledMcpjsonServers` in local file | Settings → MCP | MCP extension UI | OAuth login state per machine |
-| Secrets | `.env.local` at parent root | Same (+ Cursor Bearer env-load step) | `envFile` on MCP twin | `bearer_token_env_var` / user config |
+| Secrets | `.env.local` at parent root (+ Bearer env-load step for HTTP MCP) | Same (+ Bearer env-load step) | `envFile` on MCP twin | `bearer_token_env_var` / user config |
 
 **Sync never overwrites:** `.claude/settings.local.json`, editor user settings, or `~/.codex/config.toml`.
 
@@ -93,14 +93,14 @@ Add files and directories as needed — the mirror picks them up automatically.
 
 | Path | Purpose |
 |------|---------|
-| `.agents/mcp.json` | Canonical MCP config (`mcpServers` schema) |
+| `.agents/mcp.json` | Canonical MCP config (`mcpServers` schema, bare `${VAR}` placeholders) |
 | `.agents/mcp-disabled.json` | Bundled servers this workspace opts out of (optional) |
-| `.mcp.json` | Symlink to `.agents/mcp.json` — Claude Code |
-| `.cursor/mcp.json` | Symlink to `../.agents/mcp.json` — Cursor |
+| `.mcp.json` | Symlink to `.agents/mcp.json` — Claude Code (resolves bare `${VAR}` natively) |
+| `.cursor/mcp.json` | Cursor MCP twin (`mcpServers` schema, `${env:VAR}`, regenerated on `npm run sync`) |
 | `.codex/config.toml` | Codex MCP twin (TOML, regenerated on `npm run sync`) |
 | `.vscode/mcp.json` | VS Code MCP twin (`servers` schema, regenerated on `npm run sync`) |
 
-Edit `.agents/mcp.json` to add or change servers. `npm run sync` refreshes the Codex and VS Code twins from canonical automatically. Claude Code and Cursor pick up changes via symlinks (or a local copy when symlinks are unavailable — copies are not committed).
+Edit `.agents/mcp.json` to add or change servers, using bare `${VAR}` for secrets. `npm run sync` refreshes the Cursor, Codex, and VS Code twins from canonical automatically — Cursor's twin exists because its MCP client only resolves `${env:VAR}`, not Claude Code's `${VAR}` syntax. Claude Code picks up changes via its symlink (or a local copy when symlinks are unavailable — copies are not committed).
 
 **Dropping a bundled server:** deleting it from `.agents/mcp.json` is not enough — sync restores bundled servers from the template, and cannot tell a deliberate removal from a workspace that simply hasn't received it yet. List it in `.agents/mcp-disabled.json` instead:
 
@@ -108,13 +108,13 @@ Edit `.agents/mcp.json` to add or change servers. `npm run sync` refreshes the C
 { "disabled": ["context7"] }
 ```
 
-Disabled servers are left out of canonical and both twins. (The list lives in its own file because `.agents/mcp.json` *is* `.mcp.json` and `.cursor/mcp.json` via symlink — editors parse it directly, and anything left under `mcpServers` would still be launched.)
+Disabled servers are left out of canonical and every twin. (The list lives in its own file because `.agents/mcp.json` *is* `.mcp.json` via symlink — Claude Code parses it directly, and anything left under `mcpServers` would still be launched.)
 
 Only `[mcp_servers.*]` tables in `.codex/config.toml` are regenerated; other Codex settings you add to that file are preserved.
 
-**Secrets:** copy `.env.example` to `.env.local` at the parent workspace root, fill tokens, restart the editor. Stdio servers load `.env.local` automatically; **Cursor** users with HTTP Bearer MCP servers also need a one-time env-loading step — see `<workspace-repo>/setup.md` §4.1 (`<workspace-repo>` is this repo's directory name, e.g. `workspace`).
+**Secrets:** copy `.env.example` to `.env.local` at the parent workspace root, fill tokens, restart the editor. Stdio servers load `.env.local` automatically; **Cursor and Claude Code** users with HTTP Bearer MCP servers also need a one-time env-loading step (both resolve headers from the real process environment, not `.env.local` directly) — see `<workspace-repo>/setup.md` §4.1 (`<workspace-repo>` is this repo's directory name, e.g. `workspace`).
 
-**Mirror all, no opt-out.** Every developer gets all tool configs (Cursor, Claude Code, Codex, VS Code). `npm install` and git hooks recreate them at the parent root — deleting a parent-root `.cursor/` or `.codex/` folder does not opt out; setup will restore it. Unused symlinks are harmless. Per-project overrides still win via nearest-wins (`<project>/.cursor/mcp.json` etc.).
+**Mirror all, no opt-out.** Every developer gets all tool configs (Cursor, Claude Code, Codex, VS Code). `npm install` and git hooks recreate them at the parent root — deleting a parent-root `.cursor/` or `.codex/` folder does not opt out; setup will restore it. Unused symlinks/twins are harmless. Per-project overrides still win via nearest-wins (`<project>/.cursor/mcp.json` etc.).
 
 **Existing workspaces:** `npm run sync` scaffolds missing MCP files and merges template servers (e.g. context7) with any servers you already have — bundled **context7** is left unchanged when your canonical already defines it; other bundled servers refresh from the template. Your own servers (not shipped by aiworkspace) are preserved. Servers that exist only at the parent workspace root are migrated into canonical on sync if they are not already there.
 
@@ -122,7 +122,7 @@ Only `[mcp_servers.*]` tables in `.codex/config.toml` are regenerated; other Cod
 
 | Path | Purpose |
 |------|---------|
-| `.cursor/mcp.json` | Symlink to `../.agents/mcp.json` — MCP definitions (team) |
+| `.cursor/mcp.json` | Generated twin of `../.agents/mcp.json` (`${env:VAR}` syntax) — MCP definitions (team) |
 | `.cursor/settings.json` | **Team** Cursor settings (plugins, workspace defaults) — mirrored to parent root |
 | `.cursor/rules/<name>.mdc` | **Team** persistent rules across all repos (mirrored) |
 | `.cursor/plans/<name>.md` | Saved workspace-level plans |

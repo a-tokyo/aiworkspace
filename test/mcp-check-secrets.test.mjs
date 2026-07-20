@@ -206,6 +206,67 @@ describe("mcp-check-secrets", () => {
     assert.doesNotMatch(out, /\$\{env:TOKEN_A, TOKEN_B\}/);
   });
 
+  it("echoes bare ${VAR} canonical headers verbatim without inventing ${env:} syntax", () => {
+    tmp = makeTmpDir();
+    const ws = join(tmp.dir, "ws");
+    seedCheckScripts(ws);
+    mkdirSync(join(ws, "root-config", ".agents"), { recursive: true });
+    writeFileSync(
+      join(ws, "root-config", ".agents", "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          sonarqube: {
+            type: "http",
+            url: "https://sonar.example.com/mcp",
+            headers: { Authorization: "Bearer ${SONAR_TOKEN}" },
+          },
+        },
+      }, null, 2) + "\n",
+    );
+
+    const r = spawnSync(process.execPath, [join(ws, "scripts", "mcp-check-secrets.mjs")], {
+      cwd: ws,
+      encoding: "utf8",
+    });
+    assert.equal(r.status, 0);
+    const out = `${r.stderr}${r.stdout}`;
+    assert.match(out, /Bearer \$\{SONAR_TOKEN\}/, "must echo the bare form actually on disk");
+    assert.doesNotMatch(out, /\$\{env:SONAR_TOKEN\}/, "must not fabricate the Cursor twin's ${env:} syntax");
+  });
+
+  it("redacts a Bearer header that mixes a literal secret with a placeholder", () => {
+    tmp = makeTmpDir();
+    const ws = join(tmp.dir, "ws");
+    seedCheckScripts(ws);
+    mkdirSync(join(ws, "root-config", ".agents"), { recursive: true });
+    // hasLiteralCredentials only rejects a header with zero ${ — a mixed literal+placeholder
+    // header slips past that guard, so this simulates one already present in canonical
+    // (hand-edited, or migrated from an older config) and checks the display never echoes
+    // the literal secret text to the console.
+    writeFileSync(
+      join(ws, "root-config", ".agents", "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          api: {
+            type: "http",
+            url: "https://example.com/mcp",
+            headers: { Authorization: "Bearer sk-live-REALSECRET123 ${DECOY_VAR}" },
+          },
+        },
+      }, null, 2) + "\n",
+    );
+
+    const r = spawnSync(process.execPath, [join(ws, "scripts", "mcp-check-secrets.mjs")], {
+      cwd: ws,
+      encoding: "utf8",
+    });
+    assert.equal(r.status, 0);
+    const out = `${r.stderr}${r.stdout}`;
+    assert.doesNotMatch(out, /sk-live-REALSECRET123/, "literal secret text must never be echoed");
+    assert.match(out, /\$\{DECOY_VAR\}/, "the placeholder name is still surfaced");
+    assert.match(out, /redacted/i);
+  });
+
   it("does not treat OAuth HTTP servers as secret-bearing", () => {
     tmp = makeTmpDir();
     const ws = join(tmp.dir, "ws");

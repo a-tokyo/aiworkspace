@@ -66,7 +66,7 @@ Configs are symlinked from `root-config/`:
 |-------------|-----------|
 | `.agents/mcp.json` | `workspace/root-config/.agents/mcp.json` (canonical) |
 | `.mcp.json` | `.agents/mcp.json` (Claude Code) |
-| `.cursor/mcp.json` | `../.agents/mcp.json` (Cursor) |
+| `.cursor/mcp.json` | `workspace/root-config/.cursor/mcp.json` (Cursor twin, `${env:VAR}` syntax) |
 | `.codex/config.toml` | `workspace/root-config/.codex/config.toml` (Codex) |
 | `.vscode/mcp.json` | `workspace/root-config/.vscode/mcp.json` (VS Code) |
 
@@ -96,25 +96,26 @@ Then **restart your editor** (MCP reads config at startup).
 
 Cursor also supports `envFile: "${workspaceFolder}/.env.local"` on stdio servers natively; the env loader is the workspace default so secrets work the same in Claude Code and other tools.
 
-#### HTTP servers with Bearer tokens (Cursor one-time step)
+#### HTTP servers with Bearer tokens (Cursor + Claude Code one-time step)
 
 Some remote MCP servers have no OAuth endpoint and need a Bearer token in `headers`, for example:
 
 ```json
 "headers": {
-  "Authorization": "Bearer ${env:SONAR_TOKEN}"
+  "Authorization": "Bearer ${SONAR_TOKEN}"
 }
 ```
 
-Use Cursor's `${env:NAME}` syntax in canonical `mcp.json` for HTTP headers (not plain `${NAME}`).
+Write canonical `mcp.json` with **bare `${NAME}`** — that's the syntax Claude Code resolves natively via its symlink. Cursor's MCP client only resolves `${env:NAME}` for headers, not bare `${NAME}`, so `npm run sync` regenerates `.cursor/mcp.json` as its own twin with the placeholder translated automatically. Never hand-edit `${env:NAME}` into canonical — that breaks Claude Code, which reads canonical directly and does not understand the `env:` prefix.
 
 | Editor | How the token is loaded |
 |--------|-------------------------|
 | **VS Code** | Sync adds `envFile: "${workspaceFolder}/.env.local"` to the MCP twin |
 | **Codex** | `bearer_token_env_var` in `.codex/config.toml` — set the var in your shell |
-| **Cursor** | `${env:NAME}` reads from the **process environment at Cursor startup** — not from `envFile` (stdio only) |
+| **Cursor** | Twin's `${env:NAME}` reads from the **process environment at Cursor startup** — not from `envFile` (stdio only) |
+| **Claude Code** | Canonical's bare `${NAME}` (via the `.mcp.json` symlink) reads from the **real process environment at connection time** — same requirement as Cursor, just different placeholder syntax; not from `.env.local` directly |
 
-So for **Cursor**, load Bearer tokens into the process environment before Cursor starts.
+So for **both Cursor and Claude Code**, load Bearer tokens into the process environment before the editor/CLI starts.
 
 **Recommended (all platforms)** — from your workspace repo:
 
@@ -123,7 +124,7 @@ cd path/to/your-workspace-repo
 npm run mcp:install-shell
 ```
 
-This appends a marked block to your shell profile (`~/.zshrc`, `~/.bashrc`, and/or PowerShell `$PROFILE`). On macOS it also runs `launchctl setenv` for Bearer keys so Dock-launched Cursor inherits them. Re-run after moving the repo or changing Bearer vars in `mcp.json`. Remove with `npm run mcp:uninstall-shell`.
+This appends a marked block to your shell profile (`~/.zshrc`, `~/.bashrc`, and/or PowerShell `$PROFILE`). Every new shell exports the Bearer vars directly — which is what a terminal-launched `claude` inherits — and on macOS it also runs `launchctl setenv` for Bearer keys so Dock-launched Cursor inherits them too. Re-run after moving the repo or changing Bearer vars in `mcp.json`. Remove with `npm run mcp:uninstall-shell`.
 
 **Multiple clones on one machine.** Each clone gets its own independently identified block (a per-clone id in `local/.mcp-env.id`), so running `mcp:install-shell`/`mcp:uninstall-shell` from one workspace never touches another workspace's block in the same shell profile. Moving a clone (`mv`) preserves its identity as long as `local/.mcp-env.id` travels with it, so re-running `mcp:install-shell` still updates that clone's own block in place instead of adding a duplicate. Marker isolation doesn't cover same-named Bearer keys, though — two clones both exporting e.g. `GITHUB_PAT` still collide at the OS-env level, so prefix your key names as described above.
 
@@ -157,15 +158,15 @@ if (Test-Path $envFile) { Get-Content $envFile | ForEach-Object { if ($_ -match 
 
 Alternatively, set **User environment variables** manually (Settings → System → Environment variables) from the keys in `.env.local`.
 
-Restart Cursor after changes. If Bearer headers still send the literal `${env:VAR}` string, Cursor did not inherit the variables:
+Restart Cursor / relaunch `claude` after changes. If Bearer headers still send the literal `${env:VAR}` / `${VAR}` string, the editor did not inherit the variables — check with `claude mcp get <server>` for Claude Code, or Cursor's MCP settings panel for Cursor:
 
-- **macOS:** launch Cursor from Terminal after `source ~/.zshrc`, or set session vars with `launchctl setenv` before opening from Dock
+- **macOS:** launch Cursor from Terminal after `source ~/.zshrc`, or set session vars with `launchctl setenv` before opening from Dock; `claude` inherits whatever shell launched it, so open a fresh terminal after installing the profile block
 - **Linux:** add vars to `/etc/environment` or `~/.pam_environment`, or always launch from a login shell
 - **Windows:** use User/System environment variables and fully restart Cursor (not just reload window)
 
 Prefer OAuth HTTP servers (`{ "type": "http", "url": "..." }` with no Bearer header) whenever the provider supports it.
 
-Run `npm run mcp:check-secrets` for a non-fatal hint if tokens are missing, `.env.local` is absent, placeholders are still empty, or HTTP Bearer servers need the Cursor shell step above (also runs on every `postinstall`).
+Run `npm run mcp:check-secrets` for a non-fatal hint if tokens are missing, `.env.local` is absent, placeholders are still empty, or HTTP Bearer servers need the shell step above (also runs on every `postinstall`).
 
 **Codex + OAuth HTTP servers:** the generated `.codex/config.toml` sets `experimental_use_rmcp_client = true` and emits a `url` for each HTTP server. For OAuth servers, run the one-time `codex mcp login <name>` (the sync output lists the exact commands). Note: GitHub's Copilot MCP (`api.githubcopilot.com/mcp/`) only supports OAuth for first-party clients (Cursor, VS Code, Claude); in Codex it requires a PAT via a Bearer `${env:VAR}` header instead — or just use Cursor/VS Code for GitHub.
 
@@ -284,6 +285,6 @@ If you have no `aiworkspace` devDependency (older layout), upgrade uses `git fet
 | MCP configs missing at parent root | `cd workspace && npm run sync` (or `npm run skills:setup`), verify `ls -la ../.agents/mcp.json` |
 | Skills not showing up | `cd workspace && npm run skills:setup`, verify `ls root-config/.agents/skills/` |
 | MCP server red/error | Click server name in Cursor Settings -> MCP for details, restart Cursor |
-| HTTP MCP Bearer auth fails in Cursor | See `<workspace-repo>/setup.md` §4.1 — Unix: `~/.zshrc` source line; Windows: User env vars or PowerShell profile |
+| HTTP MCP Bearer auth fails in Cursor or Claude Code | See `<workspace-repo>/setup.md` §4.1 — Unix: `~/.zshrc` source line; Windows: User env vars or PowerShell profile. For Claude Code specifically, run `claude mcp get <server>` — if the header shows the literal `${VAR}` string unexpanded, the shell that launched `claude` didn't have the var (open a fresh terminal after `mcp:install-shell`) |
 | `npm install` fails on postinstall | Run `node scripts/skills/setup-skills.mjs` manually to see errors |
 | `npm run upgrade` fails | With `aiworkspace` in devDependencies: run `npm install` then retry. Without it: `git remote -v`, add upstream `https://github.com/a-tokyo/aiworkspace.git` |
