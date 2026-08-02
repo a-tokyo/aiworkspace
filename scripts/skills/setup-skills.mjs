@@ -80,6 +80,19 @@ function ensureRootConfigClaudeMd() {
   }
 }
 
+/**
+ * The mirror only walks entries git knows about, and git cannot track an empty
+ * directory — so a directory holding nothing committed mirrors as nothing,
+ * leaving a plausible-looking but empty tree at the parent root. Say so rather
+ * than skipping in silence. Files stay silent on purpose: warning about every
+ * uncommitted file would be noise while someone edits root-config/ mid-flight.
+ */
+function warnUntrackedDirSkip(srcDir, entry) {
+  if (!entry.isDirectory()) return;
+  const rel = relative(REPO_DIR, join(srcDir, entry.name));
+  console.warn(`  ⚠ ${rel}/ has nothing tracked by git — commit its contents (or add a .gitkeep) before it will mirror`);
+}
+
 function mirrorRootConfig() {
   if (!existsSync(ROOT_CONFIG)) { log("  ⚠ No root-config/ directory found"); return; }
 
@@ -89,7 +102,7 @@ function mirrorRootConfig() {
 
   for (const entry of readdirSync(ROOT_CONFIG, { withFileTypes: true })) {
     if (MIRROR_SKIP.has(entry.name)) continue;
-    if (tracked && !tracked.has(entry.name)) continue;
+    if (tracked && !tracked.has(entry.name)) { warnUntrackedDirSkip(ROOT_CONFIG, entry); continue; }
 
     const src = join(ROOT_CONFIG, entry.name);
     const dest = join(WORKSPACE, entry.name);
@@ -136,7 +149,7 @@ function mirrorL2(srcDir, destDir) {
   const tracked = gitTrackedChildren(srcDir);
 
   for (const entry of readdirSync(srcDir, { withFileTypes: true })) {
-    if (tracked && !tracked.has(entry.name)) continue;
+    if (tracked && !tracked.has(entry.name)) { warnUntrackedDirSkip(srcDir, entry); continue; }
 
     const destItem = join(destDir, entry.name);
     const relTarget = relative(destDir, join(srcDir, entry.name));

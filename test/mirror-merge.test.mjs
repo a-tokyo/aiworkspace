@@ -2,6 +2,7 @@ import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, lstatSync } from "node:fs";
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
 import { makeTmpDir, buildFakeWorkspace, runScript } from "./helpers.mjs";
 
 let tmp;
@@ -85,5 +86,51 @@ describe("setup-skills L2 mirror merge", () => {
         assert.ok(lstatSync(join(parentSkills, name)).isSymbolicLink(), `${name} should stay a symlink`);
       }
     }
+  });
+});
+
+describe("setup-skills untracked directory warning", () => {
+  it("warns when a directory git cannot see is skipped by the mirror", () => {
+    // Git cannot track an empty directory, so `openspec init`'s empty
+    // openspec/specs/ and openspec/changes/ mirrored as nothing while
+    // openspec/ itself looked correct at the parent root.
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const git = (...a) => execFileSync("git", a, { cwd: ws, stdio: "ignore" });
+    git("init");
+    git("config", "user.email", "test@example.com");
+    git("config", "user.name", "Test");
+    git("add", "-A");
+    git("commit", "-m", "init");
+
+    mkdirSync(join(ws, "root-config", "openspec", "specs"), { recursive: true });
+    writeFileSync(join(ws, "root-config", "openspec", "project.md"), "# project\n");
+
+    const { stderr } = runScript(setupScript(ws), [], { cwd: ws });
+
+    assert.ok(
+      stderr.includes(join("root-config", "openspec", "specs")),
+      `should name the unmirrorable directory, got: ${stderr}`,
+    );
+    assert.ok(stderr.includes(".gitkeep"), `should say how to fix it, got: ${stderr}`);
+    assert.ok(!existsSync(join(tmp.dir, "openspec", "specs")), "empty dir should still not mirror");
+    assert.ok(existsSync(join(tmp.dir, "openspec", "project.md")), "tracked sibling should still mirror");
+  });
+
+  it("does not warn about untracked files", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
+    const git = (...a) => execFileSync("git", a, { cwd: ws, stdio: "ignore" });
+    git("init");
+    git("config", "user.email", "test@example.com");
+    git("config", "user.name", "Test");
+    git("add", "-A");
+    git("commit", "-m", "init");
+    writeFileSync(join(ws, "root-config", ".gitignore"), "ignored.md\n");
+    writeFileSync(join(ws, "root-config", "ignored.md"), "# ignored\n");
+
+    const { stderr } = runScript(setupScript(ws), [], { cwd: ws });
+
+    assert.ok(!stderr.includes("ignored.md"), `should stay quiet about files, got: ${stderr}`);
   });
 });
