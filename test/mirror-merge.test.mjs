@@ -89,11 +89,12 @@ describe("setup-skills L2 mirror merge", () => {
   });
 });
 
-describe("setup-skills untracked directory warning", () => {
-  it("warns when a directory git cannot see is skipped by the mirror", () => {
-    // Git cannot track an empty directory, so `openspec init`'s empty
+describe("setup-skills invisible directory warning", () => {
+  it("warns when an empty directory is skipped by the mirror", () => {
+    // Git cannot see an empty directory, so `openspec init`'s empty
     // openspec/specs/ and openspec/changes/ mirrored as nothing while
-    // openspec/ itself looked correct at the parent root.
+    // openspec/ itself looked correct at the parent root. Note the uncommitted
+    // sibling below still mirrors — being untracked is not what blocks it.
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
     const git = (...a) => execFileSync("git", a, { cwd: ws, stdio: "ignore" });
@@ -114,10 +115,13 @@ describe("setup-skills untracked directory warning", () => {
     );
     assert.ok(stderr.includes(".gitkeep"), `should say how to fix it, got: ${stderr}`);
     assert.ok(!existsSync(join(tmp.dir, "openspec", "specs")), "empty dir should still not mirror");
-    assert.ok(existsSync(join(tmp.dir, "openspec", "project.md")), "tracked sibling should still mirror");
+    assert.ok(
+      existsSync(join(tmp.dir, "openspec", "project.md")),
+      "untracked-but-not-ignored sibling should still mirror",
+    );
   });
 
-  it("does not warn about untracked files", () => {
+  it("does not warn about files git cannot see", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "demo" });
     const git = (...a) => execFileSync("git", a, { cwd: ws, stdio: "ignore" });

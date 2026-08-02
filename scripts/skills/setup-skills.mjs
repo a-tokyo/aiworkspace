@@ -81,16 +81,17 @@ function ensureRootConfigClaudeMd() {
 }
 
 /**
- * The mirror only walks entries git knows about, and git cannot track an empty
- * directory — so a directory holding nothing committed mirrors as nothing,
+ * The mirror walks the entries git reports — tracked or merely
+ * untracked-but-not-ignored — so the one thing it cannot see is a directory that
+ * is empty or holds only ignored files. That directory mirrors as nothing,
  * leaving a plausible-looking but empty tree at the parent root. Say so rather
- * than skipping in silence. Files stay silent on purpose: warning about every
- * uncommitted file would be noise while someone edits root-config/ mid-flight.
+ * than skipping in silence. Files stay silent on purpose: a file git cannot see
+ * is an ignored one, skipped by design, and naming each would be noise.
  */
-function warnUntrackedDirSkip(srcDir, entry) {
+function warnInvisibleDirSkip(srcDir, entry) {
   if (!entry.isDirectory()) return;
   const rel = relative(REPO_DIR, join(srcDir, entry.name));
-  console.warn(`  ⚠ ${rel}/ has nothing tracked by git — commit its contents (or add a .gitkeep) before it will mirror`);
+  console.warn(`  ⚠ ${rel}/ is empty or holds only ignored files, so git cannot see it — add a .gitkeep to mirror it`);
 }
 
 function mirrorRootConfig() {
@@ -102,7 +103,7 @@ function mirrorRootConfig() {
 
   for (const entry of readdirSync(ROOT_CONFIG, { withFileTypes: true })) {
     if (MIRROR_SKIP.has(entry.name)) continue;
-    if (tracked && !tracked.has(entry.name)) { warnUntrackedDirSkip(ROOT_CONFIG, entry); continue; }
+    if (tracked && !tracked.has(entry.name)) { warnInvisibleDirSkip(ROOT_CONFIG, entry); continue; }
 
     const src = join(ROOT_CONFIG, entry.name);
     const dest = join(WORKSPACE, entry.name);
@@ -149,7 +150,7 @@ function mirrorL2(srcDir, destDir) {
   const tracked = gitTrackedChildren(srcDir);
 
   for (const entry of readdirSync(srcDir, { withFileTypes: true })) {
-    if (tracked && !tracked.has(entry.name)) { warnUntrackedDirSkip(srcDir, entry); continue; }
+    if (tracked && !tracked.has(entry.name)) { warnInvisibleDirSkip(srcDir, entry); continue; }
 
     const destItem = join(destDir, entry.name);
     const relTarget = relative(destDir, join(srcDir, entry.name));

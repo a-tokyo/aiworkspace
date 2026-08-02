@@ -64,7 +64,7 @@ Some tools generate config into directories the workspace already manages. **[Op
 
 Two things to know when doing this:
 
-- **Commit before syncing.** The mirror only walks git-tracked entries, so an uncommitted directory never appears at the root. Git cannot track empty directories either — put a `.gitkeep` in `openspec/specs/` and `openspec/changes/` or they will be skipped.
+- **Git has to be able to see it.** The mirror walks the entries git reports, tracked or merely untracked-but-not-ignored, so there is no need to commit first. What git cannot see is an empty directory — or one holding only ignored files — and those never mirror. Put a `.gitkeep` in `openspec/specs/` and `openspec/changes/` or they will be skipped.
 - Directories the workspace also populates (such as `.claude/skills/`) are **merged**, not replaced, so tool-written entries sit alongside workspace-managed skill symlinks.
 
 ## Knowledge Hierarchy
