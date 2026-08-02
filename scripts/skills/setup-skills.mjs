@@ -150,6 +150,14 @@ function mirrorL2(srcDir, destDir) {
       unlinkSync(destItem);
     } else if (existsSync(destItem)) {
       if (isRealDir(destItem)) {
+        // Both sides are real directories (e.g. a tool wrote skills into
+        // root-config/.claude/skills/ while setup owns the parent's real
+        // .claude/skills/). Symlinking the whole dir is impossible, so merge
+        // one level deeper instead of refusing and mirroring nothing.
+        if (isRealDir(join(srcDir, entry.name))) {
+          mirrorL2(join(srcDir, entry.name), destItem);
+          continue;
+        }
         console.warn(`  ⚠ ${relative(WORKSPACE, destItem)} exists — resolve manually or remove it`);
         continue;
       }
@@ -164,15 +172,22 @@ function mirrorL2(srcDir, destDir) {
 
 // ── Per-skill symlinks ──────────────────────────────────────────────────
 
-function cleanStaleLinks(dir, validNames) {
+/**
+ * Remove per-skill symlinks whose skill no longer exists. Only links this
+ * script owns — the ones pointing into `skillsSource` — are candidates; a link
+ * the root-config mirror put here (e.g. .claude/skills/<tool-skill> merged from
+ * root-config/.claude/skills/) points elsewhere and must survive, otherwise the
+ * mirror and the skill linker would undo each other on every run.
+ */
+function cleanStaleLinks(dir, validNames, skillsSource) {
   if (!existsSync(dir)) return;
   const valid = new Set(validNames);
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
-    if (isSymlink(p) && !valid.has(name)) {
-      unlinkSync(p);
-      log(`  ✗ Removed stale ${relative(WORKSPACE, p)}`);
-    }
+    if (!isSymlink(p) || valid.has(name)) continue;
+    if (resolve(dir, readlinkSync(p)) !== join(skillsSource, name)) continue;
+    unlinkSync(p);
+    log(`  ✗ Removed stale ${relative(WORKSPACE, p)}`);
   }
 }
 
@@ -183,7 +198,7 @@ function linkWorkspaceSkills(projects) {
 
   for (const sub of SKILL_LINK_DIRS) {
     const dir = join(WORKSPACE, sub);
-    cleanStaleLinks(dir, names);
+    cleanStaleLinks(dir, names, CANONICAL_SKILLS);
     if (names.length === 0) continue;
     ensureDir(dir);
     const prefix = relative(dir, CANONICAL_SKILLS);
@@ -196,7 +211,7 @@ function linkWorkspaceSkills(projects) {
     const skills = getSkillNames(proj.skillsDir);
     for (const { subdir, relPrefix } of PROJECT_SKILL_SUBDIRS) {
       const dir = join(proj.dir, subdir);
-      cleanStaleLinks(dir, skills);
+      cleanStaleLinks(dir, skills, proj.skillsDir);
       if (skills.length > 0) {
         ensureDir(dir);
         for (const name of skills) safeSymlink(join(relPrefix, name), join(dir, name), { quiet: isEnsure });
