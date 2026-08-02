@@ -60,12 +60,10 @@ The setup script walks `root-config/` generically. Add new config types (Cursor 
 
 ### Tools that write their own config
 
-Some tools generate config into directories the workspace already manages. **[OpenSpec](https://github.com/Fission-AI/OpenSpec)** is the worked example: run `openspec init` inside `root-config/` and its `openspec/` tree, skills and slash commands mirror to the workspace root like anything else, so one spec tree is shared across every repo.
+Run a tool's init inside `root-config/` and its output mirrors to the workspace root like anything else. **[OpenSpec](https://github.com/Fission-AI/OpenSpec)** is the worked example — one spec tree shared across every repo.
 
-Two things to know when doing this:
-
-- **Git has to be able to see it.** The mirror walks the entries git reports, tracked or merely untracked-but-not-ignored, so there is no need to commit first. What git cannot see is an empty directory — or one holding only ignored files — and those never mirror. Put a `.gitkeep` in `openspec/specs/` and `openspec/changes/` or they will be skipped.
-- Directories the workspace also populates (such as `.claude/skills/`) are **merged**, not replaced, so tool-written entries sit alongside workspace-managed skill symlinks.
+- Git cannot see empty directories, so they never mirror — add a `.gitkeep`.
+- Directories the workspace also populates, such as `.claude/skills/`, are **merged**, not replaced.
 
 ## Knowledge Hierarchy
 
