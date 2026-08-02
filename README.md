@@ -58,6 +58,15 @@ cd workspace && npm install
 
 The setup script walks `root-config/` generically. Add new config types (Cursor rules, Claude settings, Codex config) and they sync automatically with no script changes.
 
+### Tools that write their own config
+
+Some tools generate config into directories the workspace already manages. **[OpenSpec](https://github.com/Fission-AI/OpenSpec)** is the worked example: run `openspec init` inside `root-config/` and its `openspec/` tree, skills and slash commands mirror to the workspace root like anything else, so one spec tree is shared across every repo.
+
+Two things to know when doing this:
+
+- **Commit before syncing.** The mirror only walks git-tracked entries, so an uncommitted directory never appears at the root. Git cannot track empty directories either — put a `.gitkeep` in `openspec/specs/` and `openspec/changes/` or they will be skipped.
+- Directories the workspace also populates (such as `.claude/skills/`) are **merged**, not replaced, so tool-written entries sit alongside workspace-managed skill symlinks.
+
 ## Knowledge Hierarchy
 
 Everything follows **nearest-wins**: the closer a file is to the code being changed, the higher its priority.
@@ -153,6 +162,8 @@ If `aiworkspace` is in `devDependencies`, `upgrade` updates that package from np
 | [tribunal](https://skills.sh/a-tokyo/agent-skills/tribunal) | Doer → verifier panel → consensus loop to gate deliverables before ship. |
 
 More skills in the collection — see the [full catalog](https://github.com/a-tokyo/agent-skills#skills).
+
+[OpenSpec](https://github.com/Fission-AI/OpenSpec) works inside a workspace for spec-driven development — see [Tools that write their own config](#tools-that-write-their-own-config).
 
 ```bash
 npm run skills:add -- a-tokyo/agent-skills --skill production-grade
