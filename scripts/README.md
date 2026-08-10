@@ -21,6 +21,12 @@ These scripts are managed by [aiworkspace](https://github.com/a-tokyo/aiworkspac
 | `skills/remove-skill.mjs` | Wrapper around `skills remove` with cleanup |
 | `skills/create-skill.mjs` | Scaffolds a new manual skill directory |
 
+`setup-skills.mjs` walks the parent root to find projects with their own `.agents/skills/`, and stops
+at **nested workspaces** — any directory that is, or contains, a repo with its own
+`root-config/.agents/`. That subtree belongs to the other workspace, so nothing is linked or cleaned
+inside it; run its own `npm run skills:setup` instead. Boundaries are named on explicit runs and
+stay silent under `--ensure`, which the git hooks use.
+
 `install-shell-profile.mjs` keeps two local, gitignored files: `scripts/.mcp-env.paths` (cached node
 binary path + Bearer key names) and `local/.mcp-env.id` (a per-clone id so multiple aiworkspace clones
 on one machine each get their own shell-profile block). `.mcp-env.id` lives in `local/`, not `scripts/`,

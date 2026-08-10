@@ -66,6 +66,31 @@ export function buildFakeWorkspace(parentDir, opts = {}) {
   return { ws, mockLog };
 }
 
+/**
+ * A package root shaped like an npm-*installed* copy of aiworkspace, so init
+ * tests can exercise that path. Running bin/ straight from the git clone never
+ * does: npm renames a published package's .gitignore to .npmignore on install, so
+ * the clone and the install disagree about which files exist.
+ *
+ * `ignoreFile` names the ignore template in the fixture — `.npmignore` mimics an
+ * install, `.gitignore` a clone, null a package shipping neither.
+ */
+export function buildFakeInstalledPackage(parentDir, { ignoreFile = ".npmignore" } = {}) {
+  const pkgRoot = join(parentDir, "pkg");
+
+  for (const rel of ["bin", "scripts", "root-config"]) {
+    cpSync(join(REAL_WORKSPACE, rel), join(pkgRoot, rel), { recursive: true, dereference: false });
+  }
+  mkdirSync(join(pkgRoot, ".agents"), { recursive: true });
+  cpSync(join(REAL_WORKSPACE, ".agents", "README.md"), join(pkgRoot, ".agents", "README.md"));
+  for (const f of ["AGENTS.md", "setup.md", "package.json"]) {
+    cpSync(join(REAL_WORKSPACE, f), join(pkgRoot, f));
+  }
+  if (ignoreFile) cpSync(join(REAL_WORKSPACE, ".gitignore"), join(pkgRoot, ignoreFile));
+
+  return { pkgRoot, initScript: join(pkgRoot, "bin", "aiworkspace.mjs") };
+}
+
 export function runScript(scriptPath, args = [], opts = {}) {
   const result = spawnSync("node", [scriptPath, ...args], {
     encoding: "utf8",

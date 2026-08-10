@@ -4,7 +4,7 @@ import { existsSync, readFileSync, mkdirSync, writeFileSync, lstatSync } from "n
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { makeTmpDir, runScript } from "./helpers.mjs";
+import { makeTmpDir, runScript, buildFakeInstalledPackage } from "./helpers.mjs";
 
 const PKG_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const INIT_SCRIPT = join(PKG_ROOT, "bin", "aiworkspace.mjs");
@@ -217,5 +217,78 @@ describe("aiworkspace init", () => {
     assert.equal(exitCode, 0);
     assert.ok(existsSync(join(tmp.dir, "my-ws", "package.json")));
     assert.ok(!existsSync(join(tmp.dir, "my-ws", "node_modules")));
+  });
+
+  it("warns about a workspace already nested under the target root", () => {
+    tmp = makeTmpDir();
+    // <cwd>/team/inner/root-config/.agents/ — a workspace repo two levels down.
+    mkdirSync(join(tmp.dir, "team", "inner", "root-config", ".agents", "skills"), { recursive: true });
+
+    const { exitCode, stderr } = runScript(INIT_SCRIPT, ["init", "--no-install"], { cwd: tmp.dir });
+
+    assert.equal(exitCode, 0, "the warning must not block the scaffold");
+    assert.ok(stderr.includes("already contains a workspace"), `expected nested-workspace note, got:\n${stderr}`);
+    assert.ok(stderr.includes(join("team", "inner")), "should name the nested workspace");
+  });
+});
+
+describe("aiworkspace init from an installed package", () => {
+  /** A scaffold target inside the fixture dir, kept separate from the fake package root. */
+  function targetRoot() {
+    const cwd = join(tmp.dir, "parent");
+    mkdirSync(cwd, { recursive: true });
+    return cwd;
+  }
+
+  it("scaffolds .gitignore when npm renamed the template to .npmignore", () => {
+    tmp = makeTmpDir();
+    const { initScript } = buildFakeInstalledPackage(tmp.dir);
+    const cwd = targetRoot();
+
+    const { exitCode } = runScript(initScript, ["init", "--no-install"], { cwd });
+
+    assert.equal(exitCode, 0);
+    const scaffolded = join(cwd, "workspace", ".gitignore");
+    assert.ok(existsSync(scaffolded), ".gitignore must be scaffolded from the renamed template");
+    assert.equal(
+      readFileSync(scaffolded, "utf8"),
+      readFileSync(join(PKG_ROOT, ".gitignore"), "utf8"),
+      "scaffolded .gitignore should match the package template",
+    );
+  });
+
+  it("ignores node_modules in the scaffolded repo", () => {
+    tmp = makeTmpDir();
+    const { initScript } = buildFakeInstalledPackage(tmp.dir);
+    const cwd = targetRoot();
+
+    runScript(initScript, ["init", "--no-install"], { cwd });
+
+    // The rule, not the absence of the directory: this is what stops `git add -A`
+    // from committing node_modules/ into the new repo's history.
+    const check = spawnSync("git", ["check-ignore", "-q", "node_modules"], { cwd: join(cwd, "workspace") });
+    assert.equal(check.status, 0, "node_modules must be gitignored in the scaffolded repo");
+  });
+
+  it("skips the initial commit when the package ships no ignore template", () => {
+    tmp = makeTmpDir();
+    const { initScript } = buildFakeInstalledPackage(tmp.dir, { ignoreFile: null });
+    const cwd = targetRoot();
+
+    const { exitCode, stderr } = runScript(initScript, ["init", "--no-install"], { cwd });
+
+    assert.equal(exitCode, 0, "the scaffold should still be created");
+    assert.ok(existsSync(join(cwd, "workspace", "package.json")));
+    assert.ok(stderr.includes("initial commit skipped"), `expected a skipped-commit warning, got:\n${stderr}`);
+    const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: join(cwd, "workspace") });
+    assert.notEqual(head.status, 0, "nothing should have been committed");
+  });
+
+  it("this package ships .gitignore and no .npmignore", () => {
+    // The fallback above infers that an installed .npmignore *is* the renamed
+    // .gitignore. A real .npmignore in the repo would break that inference.
+    assert.ok(existsSync(join(PKG_ROOT, ".gitignore")));
+    assert.ok(!existsSync(join(PKG_ROOT, ".npmignore")));
+    assert.ok(ROOT_PKG.files.includes(".gitignore"), "files must ship the template");
   });
 });

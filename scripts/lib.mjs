@@ -141,6 +141,19 @@ export function isFile(p) {
   try { const s = lstatSync(p); return s.isFile() && !s.isSymbolicLink(); } catch { return false; }
 }
 
+/**
+ * True when `dir` is an aiworkspace repo — some *other* workspace's, when asked
+ * about a directory found while walking our own parent root.
+ *
+ * `init` always creates both root-config/ and root-config/.agents/, so the pair
+ * is a reliable fingerprint. Requiring .agents/ as well keeps a project that
+ * happens to keep an unrelated `root-config/` directory from being mistaken for
+ * a workspace and silently dropped from skill linking.
+ */
+export function isAiworkspaceRepo(dir) {
+  return isRealDir(join(dir, "root-config")) && isRealDir(join(dir, "root-config", ".agents"));
+}
+
 export function ensureDir(p) {
   if (!existsSync(p)) mkdirSync(p, { recursive: true });
 }
