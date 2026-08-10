@@ -10,7 +10,7 @@ workspace/root-config/.agents/skills/    ← workspace-wide skills (git-tracked)
   └── ...
 
 workspace/.agents/skills/                ← workspace project-specific skills (git-tracked)
-  ├── refactor/SKILL.md                     available only within workspace/
+  ├── tribunal/SKILL.md                     available only within workspace/
   └── ...
 
 <project>/.agents/skills/                ← project-specific skills
