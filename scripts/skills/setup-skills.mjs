@@ -31,7 +31,7 @@ import { join, resolve, relative, dirname, basename, sep } from "node:path";
 import {
   REPO_DIR, WORKSPACE, ROOT_CONFIG, CANONICAL_SKILLS,
   MIRROR_SKIP, SKILL_LINK_DIRS, PROJECT_SKILL_SUBDIRS,
-  isSymlink, isRealDir, isFile, ensureDir, removeIfEmpty,
+  isSymlink, isRealDir, isFile, isAiworkspaceRepo, ensureDir, removeIfEmpty,
   safeSymlink, gitTrackedChildren, getSkillNames, cleanCliArtifacts,
   validateLockFile, prepareMirroredSettingsMigration,
 } from "../lib.mjs";
@@ -249,23 +249,103 @@ const PROJECT_WALK_SKIP_ALWAYS = new Set(["node_modules", ".git", "dist", "build
 // "skills" is a workspace-root symlink dir managed by setup — skip only at depth 0.
 const PROJECT_WALK_MAX_DEPTH = 5;
 
-function walkProjectCandidates(visit) {
-  function walk(dir, prefix, depth) {
-    if (depth > PROJECT_WALK_MAX_DEPTH) return;
-    let entries;
-    try { entries = readdirSync(dir); } catch { return; }
-    for (const name of entries) {
-      if (name.startsWith(".") || PROJECT_WALK_SKIP_ALWAYS.has(name)) continue;
-      if (depth === 0 && name === "skills") continue;
-      const child = join(dir, name);
-      if (child === REPO_DIR) continue;
-      if (!isRealDir(child)) continue;
-      const fullName = prefix ? `${prefix}/${name}` : name;
-      visit({ name: fullName, dir: child, depth });
-      walk(child, fullName, depth + 1);
+/** True for a directory entry the project walk descends into. */
+function isWalkable(entry) {
+  return entry.isDirectory()
+    && !entry.name.startsWith(".")
+    && !PROJECT_WALK_SKIP_ALWAYS.has(entry.name);
+}
+
+/**
+ * Why `dir` belongs to another workspace, or null when it is ours to manage.
+ * Two shapes, both fatal to walk into:
+ *
+ *   - `dir` IS an aiworkspace repo — a second workspace cloned beside ours.
+ *     The only guard for that case, since WORKSPACE itself is never tested.
+ *   - `dir` CONTAINS one, making it that workspace's parent root. Its whole
+ *     subtree is that workspace's to link, project repos several levels down
+ *     included, so stopping at the repo alone would still leave us managing its
+ *     siblings.
+ *
+ * The child scan reuses the walk's own skip rules, so a workspace vendored under
+ * node_modules/ neither marks a boundary nor gets walked.
+ */
+function foreignWorkspace(dir, entries) {
+  if (isAiworkspaceRepo(dir)) return { repoDir: dir, marker: "root-config/" };
+  for (const entry of entries) {
+    if (!isWalkable(entry)) continue;
+    const child = join(dir, entry.name);
+    if (isAiworkspaceRepo(child)) return { repoDir: child, marker: `${entry.name}/root-config/` };
+  }
+  return null;
+}
+
+/**
+ * Per-skill symlinks an older version of this script planted inside another
+ * workspace's canonical config, back when the walk treated `<repo>/root-config/`
+ * as an ordinary project.
+ *
+ * Only `<repo>/root-config/` is scanned, and only for symlinks matching the
+ * shape we create. Both limits matter: links directly under `<repo>/` are that
+ * workspace's own (its repo is a project to itself — see
+ * getWorkspaceRepoProjectEntry), and the same directory legitimately holds
+ * *real* skill dirs written by third-party tools, which the mirror merges rather
+ * than owns (see mirrorL2).
+ */
+function strayLinksInForeignRootConfig(repoDir) {
+  const found = [];
+  for (const { subdir, relPrefix } of PROJECT_SKILL_SUBDIRS) {
+    const dir = join(repoDir, "root-config", subdir);
+    let names;
+    try { names = readdirSync(dir); } catch { continue; }
+    for (const name of names) {
+      const p = join(dir, name);
+      if (!isSymlink(p)) continue;
+      if (resolve(dir, readlinkSync(p)) === resolve(dir, join(relPrefix, name))) found.push(p);
     }
   }
-  walk(WORKSPACE, "", 0);
+  return found;
+}
+
+// Boundaries already announced this run — the walk runs once per consumer.
+const reportedForeignWorkspaces = new Set();
+
+/**
+ * Name the subtree we are leaving alone. Quiet under --ensure: the git hooks run
+ * that on every checkout and merge, where the line would be pure noise.
+ */
+function reportForeignWorkspace(name, { repoDir, marker }) {
+  if (reportedForeignWorkspaces.has(repoDir)) return;
+  reportedForeignWorkspaces.add(repoDir);
+  log(`  ⏭ ${name}/ has its own workspace (${marker}) — leaving its subtree to it`);
+  for (const stray of strayLinksInForeignRootConfig(repoDir)) {
+    log(`    ⚠ ${relative(WORKSPACE, stray)} was planted there by an older setup — safe to delete`);
+  }
+}
+
+function walkProjectCandidates(visit) {
+  function walk(dir, prefix, depth, entries) {
+    if (depth > PROJECT_WALK_MAX_DEPTH) return;
+    for (const entry of entries) {
+      if (!isWalkable(entry)) continue;
+      if (depth === 0 && entry.name === "skills") continue;
+      const child = join(dir, entry.name);
+      if (child === REPO_DIR) continue;
+      let childEntries;
+      try { childEntries = readdirSync(child, { withFileTypes: true }); } catch { continue; }
+      const fullName = prefix ? `${prefix}/${entry.name}` : entry.name;
+      // Before visit(), so no consumer ever sees a boundary directory or
+      // anything beneath it — including cleanProjectSkillLinks, which would
+      // otherwise delete the links that workspace owns.
+      const foreign = foreignWorkspace(child, childEntries);
+      if (foreign) { reportForeignWorkspace(fullName, foreign); continue; }
+      visit({ name: fullName, dir: child, depth });
+      walk(child, fullName, depth + 1, childEntries);
+    }
+  }
+  let rootEntries;
+  try { rootEntries = readdirSync(WORKSPACE, { withFileTypes: true }); } catch { return; }
+  walk(WORKSPACE, "", 0, rootEntries);
 }
 
 /** Workspace repo is skipped in the sibling walk but has its own project skills. */

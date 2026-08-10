@@ -416,6 +416,144 @@ describe("setup-skills", () => {
   });
 });
 
+describe("setup-skills nested workspace boundary", () => {
+  /**
+   * A second, self-contained workspace living under our parent root:
+   *   <parent>/<root>/<repo>/root-config/.agents/skills/  ← its canonical config
+   *   <parent>/<root>/<proj>/.agents/skills/<skill>/       ← a project it owns
+   */
+  function buildNestedWorkspace(parentDir, root, { repo = "workspace", proj = "inner-app", skill = "inner-skill" } = {}) {
+    const rootDir = join(parentDir, root);
+    const repoDir = join(rootDir, repo);
+    mkdirSync(join(repoDir, "root-config", ".agents", "skills"), { recursive: true });
+    const skillDir = join(rootDir, proj, ".agents", "skills", skill);
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, "SKILL.md"), `---\nname: ${skill}\n---\n`);
+    return { rootDir, repoDir, projDir: join(rootDir, proj) };
+  }
+
+  it("plants nothing anywhere inside a nested workspace's subtree", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "outer-skill" });
+    const { rootDir, repoDir, projDir } = buildNestedWorkspace(tmp.dir, "nested");
+
+    runScript(setupScript(ws), [], { cwd: ws });
+
+    for (const dir of [rootDir, repoDir, join(repoDir, "root-config"), projDir]) {
+      assert.ok(
+        !existsSync(join(dir, ".claude", "skills")),
+        `outer setup should not create .claude/skills in ${dir}`,
+      );
+    }
+  });
+
+  it("still links projects outside the nested workspace", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, {
+      withSkill: "outer-skill",
+      withProject: { name: "my-app", skill: "app-skill" },
+    });
+    buildNestedWorkspace(tmp.dir, "nested");
+
+    runScript(setupScript(ws), [], { cwd: ws });
+
+    assert.ok(existsSync(join(tmp.dir, "my-app", ".claude", "skills", "app-skill")));
+  });
+
+  it("skips a second workspace repo sitting directly under the parent root", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "outer-skill" });
+    // No enclosing root to detect — the repo itself is the boundary.
+    const other = join(tmp.dir, "other-ws");
+    const otherSkill = join(other, "root-config", ".agents", "skills", "their-skill");
+    mkdirSync(otherSkill, { recursive: true });
+    writeFileSync(join(otherSkill, "SKILL.md"), "---\nname: their-skill\n---\n");
+    mkdirSync(join(other, ".agents", "skills"), { recursive: true });
+
+    runScript(setupScript(ws), [], { cwd: ws });
+
+    assert.ok(!existsSync(join(other, ".claude", "skills")), "another workspace repo must not be linked as a project");
+    assert.ok(!existsSync(join(other, "root-config", ".claude")), "must not reach into its canonical config");
+  });
+
+  it("--clean leaves the nested workspace's own links alone", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "outer-skill" });
+    const { projDir } = buildNestedWorkspace(tmp.dir, "nested");
+    // Exactly what the nested workspace's own setup would have created.
+    const innerLinkDir = join(projDir, ".claude", "skills");
+    mkdirSync(innerLinkDir, { recursive: true });
+    symlinkSync(join("..", "..", ".agents", "skills", "inner-skill"), join(innerLinkDir, "inner-skill"));
+
+    runScript(setupScript(ws), ["--clean"], { cwd: ws });
+
+    const link = join(innerLinkDir, "inner-skill");
+    assert.ok(lstatSync(link).isSymbolicLink(), "--clean must not delete the nested workspace's links");
+  });
+
+  it("reports the boundary and any stray links an older setup left behind", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "outer-skill" });
+    const { repoDir } = buildNestedWorkspace(tmp.dir, "nested");
+    // Residue: the shape the old walk planted when it treated the nested
+    // workspace's root-config/ as an ordinary project.
+    const rcSkills = join(repoDir, "root-config", ".agents", "skills", "theirs");
+    mkdirSync(rcSkills, { recursive: true });
+    const strayDir = join(repoDir, "root-config", ".claude", "skills");
+    mkdirSync(strayDir, { recursive: true });
+    symlinkSync(join("..", "..", ".agents", "skills", "theirs"), join(strayDir, "theirs"));
+
+    const { stdout } = runScript(setupScript(ws), [], { cwd: ws });
+
+    assert.ok(stdout.includes("has its own workspace"), `expected boundary notice, got:\n${stdout}`);
+    assert.ok(stdout.includes("nested"), "boundary notice should name the subtree");
+    assert.ok(stdout.includes("planted there by an older setup"), `expected stray-link notice, got:\n${stdout}`);
+  });
+
+  it("does not flag real skill dirs in a nested workspace's root-config as stray", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "outer-skill" });
+    const { repoDir } = buildNestedWorkspace(tmp.dir, "nested");
+    // A third-party tool writing into root-config/.claude/skills/ — real dirs,
+    // merged by the mirror, not ours to call leftovers.
+    const toolSkill = join(repoDir, "root-config", ".claude", "skills", "tool-written");
+    mkdirSync(toolSkill, { recursive: true });
+    writeFileSync(join(toolSkill, "SKILL.md"), "---\nname: tool-written\n---\n");
+
+    const { stdout } = runScript(setupScript(ws), [], { cwd: ws });
+
+    assert.ok(!stdout.includes("planted there by an older setup"), `real skill dirs are not stray links:\n${stdout}`);
+    assert.ok(existsSync(join(toolSkill, "SKILL.md")), "tool-written skill must be untouched");
+  });
+
+  it("is quiet about the boundary under --ensure", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "outer-skill" });
+    buildNestedWorkspace(tmp.dir, "nested");
+
+    const { stdout } = runScript(setupScript(ws), ["--ensure"], { cwd: ws });
+
+    assert.ok(!stdout.includes("has its own workspace"), `--ensure runs on every checkout; keep it quiet:\n${stdout}`);
+  });
+
+  it("links a project whose root-config/ is not a workspace", () => {
+    tmp = makeTmpDir();
+    const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "outer-skill" });
+    // root-config/ without root-config/.agents/ means something else entirely.
+    const proj = join(tmp.dir, "config-repo");
+    mkdirSync(join(proj, "root-config", "overlays"), { recursive: true });
+    const skillDir = join(proj, ".agents", "skills", "cfg-skill");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, "SKILL.md"), "---\nname: cfg-skill\n---\n");
+
+    runScript(setupScript(ws), [], { cwd: ws });
+
+    const link = join(proj, ".claude", "skills", "cfg-skill");
+    assert.ok(existsSync(link), "a plain root-config/ dir must not be mistaken for a workspace");
+    assert.ok(lstatSync(link).isSymbolicLink());
+  });
+});
+
 describe("lock file integrity (source repo)", () => {
   const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
 

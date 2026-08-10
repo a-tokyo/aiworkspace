@@ -65,6 +65,25 @@ Run a tool's init inside `root-config/` and its output mirrors to the workspace 
 - Git cannot see empty directories, so they never mirror — add a `.gitkeep`.
 - Directories the workspace also populates, such as `.claude/skills/`, are **merged**, not replaced.
 
+### Nested workspaces
+
+A project directory can hold a workspace of its own — a team repo cloned with its own
+`workspace/root-config/`. Setup treats that as a **boundary**: it stops at any directory that is, or
+contains, a workspace repo and never links inside it. The whole subtree belongs to that workspace,
+project repos several levels down included.
+
+```
+~/dev/<your-org>/
+├── workspace/                 <- this workspace, manages the tree below
+├── <project-a>/               <- linked
+└── <team-b>/                  <- SKIPPED: has its own workspace
+    ├── workspace/             <-   ...here
+    └── <their-project>/       <-   theirs to link, not ours
+```
+
+Run `npm run skills:setup` inside the nested workspace to manage that subtree. Explicit setup and
+sync runs name each boundary they skip; the git hooks stay quiet.
+
 ## Knowledge Hierarchy
 
 Everything follows **nearest-wins**: the closer a file is to the code being changed, the higher its priority.

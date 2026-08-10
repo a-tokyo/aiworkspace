@@ -8,10 +8,11 @@
  *   npx aiworkspace init --name foo
  */
 
-import { existsSync, mkdirSync, cpSync, writeFileSync, readFileSync } from "node:fs";
-import { join, resolve, dirname } from "node:path";
+import { existsSync, mkdirSync, cpSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
+import { join, resolve, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
+import { isAiworkspaceRepo } from "../scripts/lib.mjs";
 
 const PKG_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const rootPkg = JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8"));
@@ -74,6 +75,41 @@ if (existsSync(join(process.cwd(), "root-config"))) {
   console.warn(`${Y}Warning: CWD already has root-config/ — you may be inside an existing workspace.${X}\n`);
 }
 
+/**
+ * Workspaces already living under the chosen parent root. Setup treats such a
+ * directory as a boundary and never links inside it, so say which subtrees this
+ * workspace will not manage before scaffolding rather than leaving it to be
+ * discovered later. Children and grandchildren only — a workspace root holds its
+ * repo one level down, so two levels covers `<parent>/<team>/<repo>/`.
+ */
+function findNestedWorkspaces(root) {
+  const found = [];
+  const children = (dir) => {
+    try {
+      return readdirSync(dir, { withFileTypes: true })
+        .filter(e => e.isDirectory() && !e.name.startsWith(".") && e.name !== "node_modules");
+    } catch {
+      return [];
+    }
+  };
+  for (const child of children(root)) {
+    const childDir = join(root, child.name);
+    if (isAiworkspaceRepo(childDir)) { found.push(childDir); continue; }
+    for (const grandchild of children(childDir)) {
+      const grandchildDir = join(childDir, grandchild.name);
+      if (isAiworkspaceRepo(grandchildDir)) found.push(grandchildDir);
+    }
+  }
+  return found;
+}
+
+const nested = findNestedWorkspaces(process.cwd());
+if (nested.length) {
+  console.warn(`${Y}Note: this directory already contains ${nested.length === 1 ? "a workspace" : "workspaces"}:${X}`);
+  for (const repo of nested) console.warn(`  ${D}${relative(process.cwd(), repo)}${X}`);
+  console.warn(`${D}Those subtrees stay theirs — ${name}/ will not link skills inside them.${X}\n`);
+}
+
 // ── Scaffold ────────────────────────────────────────────────────────────
 
 console.log(`\n${B}Creating workspace in ${C}${name}/${X}${B}...${X}\n`);
@@ -96,9 +132,32 @@ cpSync(join(PKG_ROOT, ".agents", "README.md"), join(target, ".agents", "README.m
 console.log(`  ${G}+${X} .agents/`);
 
 // Top-level docs
-for (const f of ["AGENTS.md", "setup.md", ".gitignore"]) {
+for (const f of ["AGENTS.md", "setup.md"]) {
   const src = join(PKG_ROOT, f);
   if (existsSync(src)) { cpSync(src, join(target, f)); console.log(`  ${G}+${X} ${f}`); }
+}
+
+/**
+ * npm renames a published package's .gitignore to .npmignore on install, so the
+ * template survives under whichever name this copy of the package has: .gitignore
+ * in a git clone, .npmignore from the registry. Reading only .gitignore scaffolded
+ * no ignore file at all on every npx run, and the auto-commit below then swept
+ * node_modules/ into the new repo's history for good.
+ */
+function scaffoldGitignoreSource() {
+  for (const candidate of [".gitignore", ".npmignore"]) {
+    const src = join(PKG_ROOT, candidate);
+    if (existsSync(src)) return src;
+  }
+  return null;
+}
+
+const gitignoreSrc = scaffoldGitignoreSource();
+if (gitignoreSrc) {
+  cpSync(gitignoreSrc, join(target, ".gitignore"));
+  console.log(`  ${G}+${X} .gitignore`);
+} else {
+  console.warn(`  ${Y}!${X} no .gitignore template in the package`);
 }
 
 // Generate a workspace-specific README (no npm badges or package-level noise)
@@ -231,17 +290,24 @@ if (!skipInstall) {
   }
 }
 
-// Initial commit (after npm install so lockfile and hooks are included)
-try {
-  const gitOpts = { cwd: target, stdio: "ignore" };
-  execFileSync("git", ["add", "-A"], gitOpts);
+// Initial commit (after npm install so lockfile and hooks are included).
+// Never commit without a .gitignore: `git add -A` would put node_modules/ in the
+// history permanently, and an uncommitted scaffold is the cheaper failure.
+if (!gitignoreSrc) {
+  console.warn(`\n  ${Y}!${X} initial commit skipped — no .gitignore was scaffolded, so ${C}git add -A${X} would commit node_modules/`);
+  console.warn(`  ${D}Add a .gitignore in ${name}/, then commit manually.${X}`);
+} else {
   try {
-    execFileSync("git", ["commit", "-m", "initial workspace setup"], gitOpts);
+    const gitOpts = { cwd: target, stdio: "ignore" };
+    execFileSync("git", ["add", "-A"], gitOpts);
+    try {
+      execFileSync("git", ["commit", "-m", "initial workspace setup"], gitOpts);
+    } catch {
+      console.warn(`  ${Y}!${X} git commit skipped (configure git user.name / user.email first)`);
+    }
   } catch {
-    console.warn(`  ${Y}!${X} git commit skipped (configure git user.name / user.email first)`);
+    /* git not available — already warned above */
   }
-} catch {
-  /* git not available — already warned above */
 }
 
 console.log(`
