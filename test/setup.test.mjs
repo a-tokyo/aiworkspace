@@ -491,39 +491,44 @@ describe("setup-skills nested workspace boundary", () => {
     assert.ok(lstatSync(link).isSymbolicLink(), "--clean must not delete the nested workspace's links");
   });
 
-  it("reports the boundary and any stray links an older setup left behind", () => {
+  it("names the boundary it skips", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "outer-skill" });
-    const { repoDir } = buildNestedWorkspace(tmp.dir, "nested");
-    // Residue: the shape the old walk planted when it treated the nested
-    // workspace's root-config/ as an ordinary project.
-    const rcSkills = join(repoDir, "root-config", ".agents", "skills", "theirs");
-    mkdirSync(rcSkills, { recursive: true });
-    const strayDir = join(repoDir, "root-config", ".claude", "skills");
-    mkdirSync(strayDir, { recursive: true });
-    symlinkSync(join("..", "..", ".agents", "skills", "theirs"), join(strayDir, "theirs"));
+    buildNestedWorkspace(tmp.dir, "nested");
 
     const { stdout } = runScript(setupScript(ws), [], { cwd: ws });
 
     assert.ok(stdout.includes("has its own workspace"), `expected boundary notice, got:\n${stdout}`);
     assert.ok(stdout.includes("nested"), "boundary notice should name the subtree");
-    assert.ok(stdout.includes("planted there by an older setup"), `expected stray-link notice, got:\n${stdout}`);
   });
 
-  it("does not flag real skill dirs in a nested workspace's root-config as stray", () => {
+  it("says nothing about what is inside the boundary, and changes none of it", () => {
     tmp = makeTmpDir();
     const { ws } = buildFakeWorkspace(tmp.dir, { withSkill: "outer-skill" });
     const { repoDir } = buildNestedWorkspace(tmp.dir, "nested");
-    // A third-party tool writing into root-config/.claude/skills/ — real dirs,
-    // merged by the mirror, not ours to call leftovers.
-    const toolSkill = join(repoDir, "root-config", ".claude", "skills", "tool-written");
+    const rcSkills = join(repoDir, "root-config", ".agents", "skills");
+    mkdirSync(join(rcSkills, "theirs"), { recursive: true });
+
+    // Both shapes that legitimately live in a nested repo's root-config: a
+    // skills-CLI symlink (skills:add runs with cwd=root-config, and that
+    // workspace's own setup clears it) and a real skill dir written by a
+    // third-party tool. Neither is ours to diagnose or delete.
+    const theirLinkDir = join(repoDir, "root-config", ".claude", "skills");
+    mkdirSync(theirLinkDir, { recursive: true });
+    symlinkSync(join("..", "..", ".agents", "skills", "theirs"), join(theirLinkDir, "theirs"));
+    const toolSkill = join(theirLinkDir, "tool-written");
     mkdirSync(toolSkill, { recursive: true });
     writeFileSync(join(toolSkill, "SKILL.md"), "---\nname: tool-written\n---\n");
 
-    const { stdout } = runScript(setupScript(ws), [], { cwd: ws });
+    const { stdout, stderr } = runScript(setupScript(ws), [], { cwd: ws });
+    const output = stdout + stderr;
 
-    assert.ok(!stdout.includes("planted there by an older setup"), `real skill dirs are not stray links:\n${stdout}`);
-    assert.ok(existsSync(join(toolSkill, "SKILL.md")), "tool-written skill must be untouched");
+    // No claim about a cause we cannot establish from the link alone.
+    for (const claim of ["planted", "stray", "safe to delete"]) {
+      assert.ok(!output.includes(claim), `must not editorialize ("${claim}") about a nested workspace:\n${output}`);
+    }
+    assert.ok(lstatSync(join(theirLinkDir, "theirs")).isSymbolicLink(), "their CLI artifact must survive");
+    assert.ok(existsSync(join(toolSkill, "SKILL.md")), "their tool-written skill must survive");
   });
 
   it("is quiet about the boundary under --ensure", () => {

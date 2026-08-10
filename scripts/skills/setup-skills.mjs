@@ -280,47 +280,27 @@ function foreignWorkspace(dir, entries) {
   return null;
 }
 
-/**
- * Per-skill symlinks an older version of this script planted inside another
- * workspace's canonical config, back when the walk treated `<repo>/root-config/`
- * as an ordinary project.
- *
- * Only `<repo>/root-config/` is scanned, and only for symlinks matching the
- * shape we create. Both limits matter: links directly under `<repo>/` are that
- * workspace's own (its repo is a project to itself — see
- * getWorkspaceRepoProjectEntry), and the same directory legitimately holds
- * *real* skill dirs written by third-party tools, which the mirror merges rather
- * than owns (see mirrorL2).
- */
-function strayLinksInForeignRootConfig(repoDir) {
-  const found = [];
-  for (const { subdir, relPrefix } of PROJECT_SKILL_SUBDIRS) {
-    const dir = join(repoDir, "root-config", subdir);
-    let names;
-    try { names = readdirSync(dir); } catch { continue; }
-    for (const name of names) {
-      const p = join(dir, name);
-      if (!isSymlink(p)) continue;
-      if (resolve(dir, readlinkSync(p)) === resolve(dir, join(relPrefix, name))) found.push(p);
-    }
-  }
-  return found;
-}
-
 // Boundaries already announced this run — the walk runs once per consumer.
 const reportedForeignWorkspaces = new Set();
 
 /**
- * Name the subtree we are leaving alone. Quiet under --ensure: the git hooks run
- * that on every checkout and merge, where the line would be pure noise.
+ * Name the subtree we are leaving alone, and say nothing about what is in it.
+ *
+ * Reporting on its contents is tempting and wrong. Per-skill symlinks under
+ * `<repo>/root-config/.claude/skills/` look like something an older version of
+ * this script planted there, but they are the ordinary artifact of the skills
+ * CLI, which `skills:add` and `skills:update` run with cwd set to root-config —
+ * and that workspace's own setup already deletes them on its next run
+ * (cleanCliArtifacts(ROOT_CONFIG) below). The two causes are indistinguishable
+ * from the link alone, so naming either one is a guess dressed as a diagnosis.
+ *
+ * Quiet under --ensure: the git hooks run that on every checkout and merge,
+ * where even this line would be noise.
  */
 function reportForeignWorkspace(name, { repoDir, marker }) {
   if (reportedForeignWorkspaces.has(repoDir)) return;
   reportedForeignWorkspaces.add(repoDir);
   log(`  ⏭ ${name}/ has its own workspace (${marker}) — leaving its subtree to it`);
-  for (const stray of strayLinksInForeignRootConfig(repoDir)) {
-    log(`    ⚠ ${relative(WORKSPACE, stray)} was planted there by an older setup — safe to delete`);
-  }
 }
 
 function walkProjectCandidates(visit) {
