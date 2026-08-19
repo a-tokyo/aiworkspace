@@ -121,6 +121,25 @@ describe("aiworkspace init", () => {
     assert.ok(!setup.includes("workspace/"));
   });
 
+  it("rewrites the clone destination so the quickstart runs", () => {
+    tmp = makeTmpDir();
+    runScript(INIT_SCRIPT, ["init", "my-ws", "--no-install"], { cwd: tmp.dir });
+    for (const doc of ["setup.md", "README.md"]) {
+      const text = readFileSync(join(tmp.dir, "my-ws", doc), "utf8");
+      // `git clone <url> workspace` is a bare trailing word, so the `workspace/`
+      // and `cd workspace` rules never reached it. It used to clone into
+      // workspace/ while the next line cd'd into my-ws/.
+      assert.ok(
+        !/git clone \S+ workspace(\s|$)/m.test(text),
+        `${doc}: clone destination still says "workspace"`,
+      );
+      assert.ok(
+        !/\/workspace(\s|$|`)/m.test(text),
+        `${doc}: a /workspace path suffix survived the rename`,
+      );
+    }
+  });
+
   it("creates root-config/skills-lock.json", () => {
     tmp = makeTmpDir();
     runScript(INIT_SCRIPT, ["init", "--no-install"], { cwd: tmp.dir });
