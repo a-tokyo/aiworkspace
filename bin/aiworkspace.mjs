@@ -255,6 +255,7 @@ console.log(`  ${G}+${X} package.json`);
 
 // Patch doc paths to use the chosen name (no-op when name === DEFAULT_NAME)
 const PATCHABLE_DOCS = [
+  "README.md",
   "AGENTS.md",
   "setup.md",
   join(".agents", "README.md"),
@@ -265,7 +266,15 @@ for (const f of PATCHABLE_DOCS) {
   const p = join(target, f);
   if (!existsSync(p)) continue;
   const before = readFileSync(p, "utf8");
-  const after = before.replaceAll(`${DEFAULT_NAME}/`, `${name}/`).replaceAll(`cd ${DEFAULT_NAME}`, `cd ${name}`);
+  const after = before
+    .replaceAll(`${DEFAULT_NAME}/`, `${name}/`)
+    .replaceAll(`cd ${DEFAULT_NAME}`, `cd ${name}`)
+    // `git clone <url> workspace` — the clone destination is a bare trailing word,
+    // so neither rule above reaches it. Left unpatched, the quickstart clones into
+    // workspace/ and the next line cds into the renamed directory.
+    .replace(new RegExp(`(git clone \\S+) ${DEFAULT_NAME}(?=\\s|$)`, "gm"), `$1 ${name}`)
+    // `~/dev/<org>/workspace` — path suffix with no trailing slash.
+    .replace(new RegExp(`/${DEFAULT_NAME}(?=\\s|$|\`)`, "gm"), `/${name}`);
   if (after !== before) writeFileSync(p, after);
 }
 
